@@ -1,0 +1,72 @@
+import React, { useEffect, useState } from 'react'
+import { Command } from 'cmdk'
+import { FiSearch, FiFileText } from 'react-icons/fi'
+import { useNavigate } from 'react-router-dom'
+import api from '../api'
+
+// Simple CMDK styling via standard CSS or inline
+const CommandPalette = () => {
+    const [open, setOpen] = useState(false)
+    const [contracts, setContracts] = useState<any[]>([])
+    const navigate = useNavigate()
+
+    useEffect(() => {
+        const down = (e: KeyboardEvent) => {
+            if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                setOpen((open) => !open)
+            }
+        }
+        document.addEventListener('keydown', down)
+
+        // Fetch contracts for search (in real app, use React Query cache or specialized search endpoint)
+        api.get('/contracts').then(res => setContracts(res.data)).catch(console.error)
+
+        return () => document.removeEventListener('keydown', down)
+    }, [])
+
+    return (
+        <div className="fixed z-50">
+            {open && <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />}
+            <Command.Dialog open={open} onOpenChange={setOpen} label="Global Search" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden p-2">
+                <div className="flex items-center px-4 border-b border-gray-800">
+                    <FiSearch className="text-gray-400 mr-2" />
+                    <Command.Input placeholder="Search contracts, tags, actions..." className="w-full bg-transparent py-4 text-white focus:outline-none" />
+                </div>
+                <Command.List className="py-2 px-2 max-h-96 overflow-y-auto">
+                    <Command.Empty className="py-6 text-center text-gray-500">No results found.</Command.Empty>
+
+                    <Command.Group heading="Contracts" className="text-gray-500 text-xs font-medium mb-2 px-2">
+                        {contracts.map(contract => (
+                            <Command.Item
+                                key={contract.id}
+                                value={`${contract.title} ${contract.description}`}
+                                onSelect={() => {
+                                    // Navigate or perform action
+                                    console.log('Selected', contract.title)
+                                    setOpen(false)
+                                }}
+                                className="flex items-center px-2 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white cursor-pointer transition-colors"
+                            >
+                                <FiFileText className="mr-2" />
+                                <span>{contract.title}</span>
+                                <span className="ml-auto text-xs opacity-50">{new Date(contract.end_date).toLocaleDateString()}</span>
+                            </Command.Item>
+                        ))}
+                    </Command.Group>
+
+                    <Command.Group heading="Actions" className="text-gray-500 text-xs font-medium mb-2 px-2 mt-2">
+                        <Command.Item value="toggle-dark" className="flex items-center px-2 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white cursor-pointer">
+                            Change Theme
+                        </Command.Item>
+                        <Command.Item value="upload" onSelect={() => setOpen(false)} className="flex items-center px-2 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white cursor-pointer">
+                            Upload Contract
+                        </Command.Item>
+                    </Command.Group>
+                </Command.List>
+            </Command.Dialog>
+        </div>
+    )
+}
+
+export default CommandPalette

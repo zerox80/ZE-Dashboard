@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiUploadCloud, FiX } from 'react-icons/fi'
@@ -8,9 +8,10 @@ import { useQueryClient } from '@tanstack/react-query'
 interface UploadModalProps {
     isOpen: boolean
     onClose: () => void
+    initialData?: any
 }
 
-const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => {
+const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData }) => {
     const [file, setFile] = useState<File | null>(null)
     const [title, setTitle] = useState('')
     const [description, setDescription] = useState('')
@@ -18,9 +19,46 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => {
     const [tags, setTags] = useState('')
     const [startDate, setStartDate] = useState('')
     const [endDate, setEndDate] = useState('')
+    const [noticePeriod, setNoticePeriod] = useState('30')
     const [uploading, setUploading] = useState(false)
 
     const queryClient = useQueryClient()
+
+    useEffect(() => {
+        if (isOpen && initialData) {
+            setTitle(initialData.title || '')
+            setDescription(initialData.description || '')
+            setValue(initialData.value?.toString() || '')
+            setTags(initialData.tags?.map((t: any) => t.name).join(', ') || '')
+            setNoticePeriod(initialData.notice_period?.toString() || '30')
+            // Format dates for input type="date" (YYYY-MM-DD) - Use local time to avoid timezone shifts
+            if (initialData.start_date) {
+                const d = new Date(initialData.start_date)
+                const year = d.getFullYear()
+                const month = String(d.getMonth() + 1).padStart(2, '0')
+                const day = String(d.getDate()).padStart(2, '0')
+                setStartDate(`${year}-${month}-${day}`)
+            }
+            if (initialData.end_date) {
+                const d = new Date(initialData.end_date)
+                const year = d.getFullYear()
+                const month = String(d.getMonth() + 1).padStart(2, '0')
+                const day = String(d.getDate()).padStart(2, '0')
+                setEndDate(`${year}-${month}-${day}`)
+            }
+            setFile(null)
+        } else if (isOpen && !initialData) {
+            // Reset for new upload
+            setTitle('')
+            setDescription('')
+            setValue('')
+            setTags('')
+            setNoticePeriod('30')
+            setStartDate('')
+            setEndDate('')
+            setFile(null)
+        }
+    }, [isOpen, initialData])
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         if (acceptedFiles.length > 0) {
@@ -32,22 +70,35 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!file || !title || !startDate || !endDate) return
+        // File is required only for new contracts
+        if (!initialData && !file) return
+        if (!title || !startDate || !endDate) return
 
         setUploading(true)
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('title', title)
-        formData.append('description', description)
-        formData.append('value', value || '0')
-        formData.append('tags', tags)
-        formData.append('start_date', new Date(startDate).toISOString())
-        formData.append('end_date', new Date(endDate).toISOString())
 
         try {
-            await api.post('/contracts', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            })
+            const formData = new FormData()
+            if (file) formData.append('file', file)
+            formData.append('title', title)
+            formData.append('description', description)
+            formData.append('value', value || '0')
+            formData.append('notice_period', noticePeriod || '30')
+            formData.append('tags', tags)
+            formData.append('start_date', new Date(startDate).toISOString())
+            formData.append('end_date', new Date(endDate).toISOString())
+
+            if (initialData) {
+                // Edit Mode: PUT request (FormData)
+                await api.put(`/contracts/${initialData.id}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                })
+            } else {
+                // Create Mode: POST request (FormData)
+                await api.post('/contracts', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                })
+            }
+
             queryClient.invalidateQueries(['contracts'])
             onClose()
             // Reset form
@@ -56,10 +107,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => {
             setDescription('')
             setValue('')
             setTags('')
+            setNoticePeriod('30')
             setStartDate('')
             setEndDate('')
-        } catch (error) {
-            console.error('Upload failed', error)
+        } catch (error: any) {
+            console.error('Operation failed', error)
+            const msg = error.response?.data?.detail || error.message || "Unknown error";
+            alert(`Operation failed: ${msg}`);
         } finally {
             setUploading(false)
         }
@@ -84,7 +138,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => {
                     >
                         <div className="bg-gray-900 border border-gray-700 w-full max-w-xl rounded-2xl shadow-2xl pointer-events-auto flex flex-col max-h-[90vh] overflow-y-auto">
                             <div className="flex justify-between items-center p-6 border-b border-gray-800">
-                                <h3 className="text-xl font-semibold text-white">Upload Contract</h3>
+                                <h3 className="text-xl font-semibold text-white">{initialData ? 'Vertrag bearbeiten' : 'Vertrag hochladen'}</h3>
                                 <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
                                     <FiX size={24} />
                                 </button>
@@ -97,45 +151,52 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose }) => {
                                     {file ? (
                                         <p className="text-blue-400 font-medium">{file.name}</p>
                                     ) : (
-                                        <p className="text-gray-400">Drag & drop a file here, or click to select</p>
+                                        <p className="text-gray-400">
+                                            {initialData ? 'Neue Datei hier ablegen zum Ersetzen (Optional)' : 'Datei hier ablegen oder klicken'}
+                                        </p>
                                     )}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-1">Title</label>
+                                        <label className="block text-sm font-medium text-gray-400 mb-1">Titel</label>
                                         <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" required />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-1">Value ($)</label>
+                                        <label className="block text-sm font-medium text-gray-400 mb-1">Wert (€)</label>
                                         <input type="number" value={value} onChange={e => setValue(e.target.value)} className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Description</label>
+                                    <label className="block text-sm font-medium text-gray-400 mb-1">Beschreibung</label>
                                     <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" rows={2} />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Tags (comma separated)</label>
+                                    <label className="block text-sm font-medium text-gray-400 mb-1">Tags (kommagetrennt)</label>
                                     <input type="text" value={tags} onChange={e => setTags(e.target.value)} placeholder="Software, SaaS, 2024" className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-1">Start Date</label>
+                                        <label className="block text-sm font-medium text-gray-400 mb-1">Startdatum</label>
                                         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" required />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-1">End Date</label>
+                                        <label className="block text-sm font-medium text-gray-400 mb-1">Enddatum</label>
                                         <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" required />
                                     </div>
                                 </div>
 
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-1">Kündigungsfrist (Tage)</label>
+                                    <input type="number" value={noticePeriod} onChange={e => setNoticePeriod(e.target.value)} placeholder="30" className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" />
+                                </div>
+
                                 <div className="pt-4">
                                     <button type="submit" disabled={uploading} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded-lg transition-colors disabled:opacity-50">
-                                        {uploading ? 'Uploading...' : 'Upload Contract'}
+                                        {uploading ? (initialData ? 'Speichern...' : 'Hochladen...') : (initialData ? 'Änderungen speichern' : 'Vertrag hochladen')}
                                     </button>
                                 </div>
                             </form>

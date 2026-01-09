@@ -33,6 +33,7 @@ class ContractCreate(BaseModel):
     end_date: datetime
     value: float = Field(default=0.0, ge=0)
     tags: List[str] = []
+    notice_period: int = Field(default=30, ge=0, description="Notice period in days")
 
 class ContractUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
@@ -41,6 +42,7 @@ class ContractUpdate(BaseModel):
     end_date: Optional[datetime] = None
     value: Optional[float] = Field(None, ge=0)
     tags: Optional[List[str]] = None
+    notice_period: Optional[int] = Field(None, ge=0)
 
 class ContractRead(BaseModel):
     id: int
@@ -53,10 +55,18 @@ class ContractRead(BaseModel):
     value: float
     version: int
     tags: List[TagRead] = []
+    tags: List[TagRead] = []
+    notice_period: int
+    file_extension: str
+
+    class Config:
+        orm_mode = True
+
 
 class AuditLogRead(BaseModel):
     id: int
     user_id: Optional[int]
+    username: Optional[str] = None
     action: str
     details: str
     timestamp: datetime
@@ -65,3 +75,42 @@ class AuditLogRead(BaseModel):
 
 class OTPVerify(BaseModel):
     otp: str = Field(..., min_length=6, max_length=6)
+
+
+# Admin Panel Schemas
+class UserRead(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    has_2fa: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    username: Optional[str] = Field(None, min_length=3, max_length=32)
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class PermissionCreate(BaseModel):
+    user_id: int
+    contract_id: int
+    permission_level: str = Field(default="read", pattern="^(read|write|full)$")
+
+
+class PermissionRead(BaseModel):
+    id: int
+    user_id: int
+    contract_id: int
+    permission_level: str
+    username: Optional[str] = None
+    contract_title: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+

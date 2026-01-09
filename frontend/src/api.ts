@@ -5,4 +5,17 @@ const api = axios.create({
     withCredentials: true, // Required for HttpOnly cookie authentication
 })
 
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            // Check if we are not already on the login page to avoid loops
+            if (window.location.pathname !== '/login') {
+                window.location.href = '/login';
+            }
+        }
+        return Promise.reject(error);
+    }
+)
+
 export default api

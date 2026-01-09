@@ -20,6 +20,16 @@ class User(SQLModel, table=True):
     hashed_password: str
     role: str = Field(default="user") # 'admin' or 'user'
     totp_secret: Optional[str] = None # For 2FA
+    is_active: bool = Field(default=True)  # Deactivate users instead of deleting
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Permission levels: "read" = view only, "write" = edit, "full" = edit + delete
+class ContractPermission(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    contract_id: int = Field(foreign_key="contract.id", index=True)
+    permission_level: str = Field(default="read")  # "read", "write", "full"
     
 class Contract(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -29,6 +39,9 @@ class Contract(SQLModel, table=True):
     end_date: datetime
     file_path: str
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Cancellation Logic
+    notice_period: int = Field(default=30, description="Notice period in days")
     
     # Financials
     value: float = Field(default=0.0)
@@ -42,6 +55,16 @@ class Contract(SQLModel, table=True):
     
     # We could adding a children relationship for version history if needed
     # children: List["Contract"] = Relationship(sa_relationship_kwargs={"remote_side": "Contract.parent_id"})
+
+    @property
+    def file_extension(self) -> str:
+        import os
+        if not self.file_path:
+            return ".pdf"
+        try:
+            return os.path.splitext(self.file_path)[1]
+        except Exception:
+            return ".pdf"
 
 class AuditLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

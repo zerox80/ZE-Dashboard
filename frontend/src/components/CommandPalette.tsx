@@ -31,12 +31,12 @@ const CommandPalette = () => {
             <Command.Dialog open={open} onOpenChange={setOpen} label="Global Search" className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden p-2">
                 <div className="flex items-center px-4 border-b border-gray-800">
                     <FiSearch className="text-gray-400 mr-2" />
-                    <Command.Input placeholder="Search contracts, tags, actions..." className="w-full bg-transparent py-4 text-white focus:outline-none" />
+                    <Command.Input placeholder="Suche Verträge, Tags, Aktionen..." className="w-full bg-transparent py-4 text-white focus:outline-none" />
                 </div>
                 <Command.List className="py-2 px-2 max-h-96 overflow-y-auto">
-                    <Command.Empty className="py-6 text-center text-gray-500">No results found.</Command.Empty>
+                    <Command.Empty className="py-6 text-center text-gray-500">Keine Ergebnisse gefunden.</Command.Empty>
 
-                    <Command.Group heading="Contracts" className="text-gray-500 text-xs font-medium mb-2 px-2">
+                    <Command.Group heading="Verträge" className="text-gray-500 text-xs font-medium mb-2 px-2">
                         {contracts.map(contract => (
                             <Command.Item
                                 key={contract.id}
@@ -55,12 +55,12 @@ const CommandPalette = () => {
                         ))}
                     </Command.Group>
 
-                    <Command.Group heading="Actions" className="text-gray-500 text-xs font-medium mb-2 px-2 mt-2">
+                    <Command.Group heading="Aktionen" className="text-gray-500 text-xs font-medium mb-2 px-2 mt-2">
                         <Command.Item value="toggle-dark" className="flex items-center px-2 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white cursor-pointer">
-                            Change Theme
+                            Theme ändern
                         </Command.Item>
                         <Command.Item value="upload" onSelect={() => setOpen(false)} className="flex items-center px-2 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 hover:text-white cursor-pointer">
-                            Upload Contract
+                            Vertrag hochladen
                         </Command.Item>
                     </Command.Group>
                 </Command.List>

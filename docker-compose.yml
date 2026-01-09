@@ -12,6 +12,9 @@ services:
       - DEBUG_MODE=${DEBUG_MODE:-false}
       - RATE_LIMIT_LOGIN=${RATE_LIMIT_LOGIN:-5/minute}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+    volumes:
+      - ./data:/app/data
+      - ./backend/uploads:/app/uploads
     networks:
       - ze-network
 

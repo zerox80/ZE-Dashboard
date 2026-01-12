@@ -219,7 +219,7 @@ const Dashboard: React.FC = () => {
                                             labelStyle={{ color: '#fff' }}
                                             formatter={(value: number, name: string) => {
                                                 const percent = totalValue > 0 ? (value / totalValue * 100) : 0;
-                                                return [`${percent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}%`, 'Anteil'];
+                                                return [`${percent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}%`, name];
                                             }}
                                         />
                                     </PieChart>

@@ -216,7 +216,7 @@ const Dashboard: React.FC = () => {
                                         <RechartsTooltip
                                             contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: '#fff' }}
                                             itemStyle={{ color: '#fff' }}
-                                            labelStyle={{ color: '#fff' }}
+                                            labelStyle={{ display: 'none' }}
                                             formatter={(value: number, name: string) => {
                                                 const percent = totalValue > 0 ? (value / totalValue * 100) : 0;
                                                 return [`${percent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}%`, name];

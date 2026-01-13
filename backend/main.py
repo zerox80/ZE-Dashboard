@@ -39,8 +39,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    # Allow localhost, 127.0.0.1, and any 192.168.x.x / 10.x.x.x local network IPs
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$",
+    # Allow localhost and local network access
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:80",
+        "http://127.0.0.1",
+        "http://127.0.0.1:80",
+    ],
+    # Also allow any origin matching local network IPs
+    allow_origin_regex=r"^https?://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -575,6 +582,14 @@ def delete_contract(
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
+# Helper dependency for admin-only endpoints
+def require_admin(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+
 @app.get("/tags", response_model=List[TagRead])
 def get_tags(
     current_user: User = Depends(get_current_user),
@@ -697,12 +712,6 @@ def get_contract_audit_logs(
 # ========================================
 #           ADMIN PANEL ENDPOINTS
 # ========================================
-
-# Helper dependency for admin-only endpoints
-def require_admin(current_user: User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return current_user
 
 
 # Helper to check contract permission

@@ -167,12 +167,14 @@ async def login_for_access_token(
         data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
     )
     
-    # Set HttpOnly Cookie (secure=True when PRODUCTION=true)
+    # Set HttpOnly Cookie
+    # Secure flag only when request comes via HTTPS (check X-Forwarded-Proto from nginx)
+    is_https = request.headers.get("x-forwarded-proto", "http") == "https"
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=PRODUCTION_MODE,  # Secure in production, allow HTTP in dev
+        secure=is_https,  # Only secure if actually using HTTPS
         samesite="lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )

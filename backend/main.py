@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Response, Request, Cookie
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
+from sqlalchemy import or_, func
 from typing import List, Annotated, Optional
 import shutil
 import os
@@ -20,8 +21,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from database import create_db_and_tables, get_session
-from models import User, Contract, Tag, ContractTagLink, AuditLog, ContractPermission
-from schemas import ContractRead, Token, UserCreate, ContractCreate, ContractUpdate, AuditLogRead, OTPVerify, TagRead, UserRead, UserUpdate, PermissionCreate, PermissionRead
+from models import User, Contract, Tag, ContractTagLink, AuditLog, ContractPermission, ContractList, ContractListLink
+from schemas import ContractRead, Token, UserCreate, ContractCreate, ContractUpdate, AuditLogRead, OTPVerify, TagRead, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate
 from auth import verify_password, create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES
 from security_utils import log_audit, add_watermark
 
@@ -221,10 +222,85 @@ def verify_2fa(otp_data: OTPVerify, current_user: User = Depends(get_current_use
 # --- Contract Endpoints ---
 
 @app.get("/contracts", response_model=List[ContractRead])
-def read_contracts(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    # By default, ALL users see ALL contracts
-    # Permissions are OPTIONAL restrictions, not required grants
-    contracts = session.exec(select(Contract)).all()
+def read_contracts(
+    q: Optional[str] = None,                    # Full-text search
+    tags: Optional[str] = None,                 # Comma-separated tag names
+    list_id: Optional[int] = None,              # Filter by list
+    min_value: Optional[float] = None,
+    max_value: Optional[float] = None,
+    start_date_from: Optional[datetime] = None,
+    start_date_to: Optional[datetime] = None,
+    status: Optional[str] = None,               # "active" or "expired"
+    sort_by: Optional[str] = "uploaded_at",     # title, value, start_date, end_date
+    sort_order: Optional[str] = "desc",         # asc or desc
+    current_user: User = Depends(get_current_user), 
+    session: Session = Depends(get_session)
+):
+    """
+    Get contracts with optional search and filters.
+    By default, ALL users see ALL contracts.
+    Permissions are OPTIONAL restrictions, not required grants.
+    """
+    statement = select(Contract)
+    
+    # Full-text search on title and description
+    if q:
+        search_term = f"%{q}%"
+        statement = statement.where(
+            or_(
+                Contract.title.ilike(search_term),
+                Contract.description.ilike(search_term)
+            )
+        )
+    
+    # Filter by tags (comma-separated)
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        if tag_list:
+            statement = statement.join(ContractTagLink).join(Tag).where(Tag.name.in_(tag_list))
+    
+    # Filter by list
+    if list_id is not None:
+        statement = statement.join(ContractListLink).where(ContractListLink.list_id == list_id)
+    
+    # Value range
+    if min_value is not None:
+        statement = statement.where(Contract.value >= min_value)
+    if max_value is not None:
+        statement = statement.where(Contract.value <= max_value)
+    
+    # Date range (start_date filter)
+    if start_date_from:
+        statement = statement.where(Contract.start_date >= start_date_from)
+    if start_date_to:
+        statement = statement.where(Contract.start_date <= start_date_to)
+    
+    # Status filter
+    now = datetime.utcnow()
+    if status == "active":
+        statement = statement.where(Contract.end_date >= now)
+    elif status == "expired":
+        statement = statement.where(Contract.end_date < now)
+    
+    # Sorting
+    sort_columns = {
+        "title": Contract.title,
+        "value": Contract.value,
+        "start_date": Contract.start_date,
+        "end_date": Contract.end_date,
+        "uploaded_at": Contract.uploaded_at
+    }
+    sort_column = sort_columns.get(sort_by, Contract.uploaded_at)
+    
+    if sort_order == "asc":
+        statement = statement.order_by(sort_column.asc())
+    else:
+        statement = statement.order_by(sort_column.desc())
+    
+    # Ensure unique results when joining
+    statement = statement.distinct()
+    
+    contracts = session.exec(statement).all()
     return contracts
 
 @app.post("/contracts", response_model=ContractRead)
@@ -852,3 +928,215 @@ def delete_permission(
     
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
+# ========================================
+#           CONTRACT LISTS ENDPOINTS
+# ========================================
+
+@app.get("/lists", response_model=List[ContractListRead])
+def get_lists(
+    current_user: User = Depends(get_current_user), 
+    session: Session = Depends(get_session)
+):
+    """Get all contract lists with contract counts."""
+    lists = session.exec(select(ContractList)).all()
+    result = []
+    for lst in lists:
+        count = session.exec(
+            select(func.count(ContractListLink.contract_id))
+            .where(ContractListLink.list_id == lst.id)
+        ).one()
+        result.append({
+            "id": lst.id,
+            "name": lst.name,
+            "description": lst.description,
+            "color": lst.color,
+            "created_at": lst.created_at,
+            "contract_count": count or 0
+        })
+    return result
+
+
+@app.post("/lists", response_model=ContractListRead, status_code=201)
+def create_list(
+    list_data: ContractListCreate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Create a new contract list."""
+    new_list = ContractList(
+        name=list_data.name,
+        description=list_data.description,
+        color=list_data.color
+    )
+    session.add(new_list)
+    session.commit()
+    session.refresh(new_list)
+    return {
+        "id": new_list.id,
+        "name": new_list.name,
+        "description": new_list.description,
+        "color": new_list.color,
+        "created_at": new_list.created_at,
+        "contract_count": 0
+    }
+
+
+@app.get("/lists/{list_id}", response_model=ContractListRead)
+def get_list(
+    list_id: int, 
+    current_user: User = Depends(get_current_user), 
+    session: Session = Depends(get_session)
+):
+    """Get a specific list with its contract count."""
+    lst = session.get(ContractList, list_id)
+    if not lst:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    count = session.exec(
+        select(func.count(ContractListLink.contract_id))
+        .where(ContractListLink.list_id == lst.id)
+    ).one()
+    
+    return {
+        "id": lst.id,
+        "name": lst.name,
+        "description": lst.description,
+        "color": lst.color,
+        "created_at": lst.created_at,
+        "contract_count": count or 0
+    }
+
+
+@app.put("/lists/{list_id}", response_model=ContractListRead)
+def update_list(
+    list_id: int,
+    list_data: ContractListUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Update a list."""
+    lst = session.get(ContractList, list_id)
+    if not lst:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    if list_data.name is not None:
+        lst.name = list_data.name
+    if list_data.description is not None:
+        lst.description = list_data.description
+    if list_data.color is not None:
+        lst.color = list_data.color
+    
+    session.add(lst)
+    session.commit()
+    session.refresh(lst)
+    
+    count = session.exec(
+        select(func.count(ContractListLink.contract_id))
+        .where(ContractListLink.list_id == lst.id)
+    ).one()
+    
+    return {
+        "id": lst.id,
+        "name": lst.name,
+        "description": lst.description,
+        "color": lst.color,
+        "created_at": lst.created_at,
+        "contract_count": count or 0
+    }
+
+
+@app.delete("/lists/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_list(
+    list_id: int, 
+    current_user: User = Depends(get_current_user), 
+    session: Session = Depends(get_session)
+):
+    """Delete a list (contracts are NOT deleted, only the association)."""
+    lst = session.get(ContractList, list_id)
+    if not lst:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    # Remove all links first
+    session.exec(delete(ContractListLink).where(ContractListLink.list_id == list_id))
+    session.delete(lst)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/lists/{list_id}/contracts/{contract_id}", status_code=201)
+def add_contract_to_list(
+    list_id: int,
+    contract_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Add a contract to a list."""
+    # Check list exists
+    lst = session.get(ContractList, list_id)
+    if not lst:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    # Check contract exists
+    contract = session.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    # Check if already linked
+    existing = session.exec(
+        select(ContractListLink).where(
+            ContractListLink.list_id == list_id,
+            ContractListLink.contract_id == contract_id
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Contract already in list")
+    
+    link = ContractListLink(list_id=list_id, contract_id=contract_id)
+    session.add(link)
+    session.commit()
+    return {"ok": True, "message": f"Contract '{contract.title}' added to list '{lst.name}'"}
+
+
+@app.delete("/lists/{list_id}/contracts/{contract_id}")
+def remove_contract_from_list(
+    list_id: int,
+    contract_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Remove a contract from a list."""
+    link = session.exec(
+        select(ContractListLink).where(
+            ContractListLink.list_id == list_id,
+            ContractListLink.contract_id == contract_id
+        )
+    ).first()
+    
+    if not link:
+        raise HTTPException(status_code=404, detail="Contract not in list")
+    
+    session.delete(link)
+    session.commit()
+    return {"ok": True, "message": "Contract removed from list"}
+
+
+@app.get("/lists/{list_id}/contracts", response_model=List[ContractRead])
+def get_list_contracts(
+    list_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Get all contracts in a specific list."""
+    lst = session.get(ContractList, list_id)
+    if not lst:
+        raise HTTPException(status_code=404, detail="List not found")
+    
+    contracts = session.exec(
+        select(Contract)
+        .join(ContractListLink)
+        .where(ContractListLink.list_id == list_id)
+    ).all()
+    
+    return contracts

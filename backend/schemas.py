@@ -26,6 +26,18 @@ class TagRead(BaseModel):
     name: str
     color: str
 
+
+class ContractListRead(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    color: str
+    created_at: datetime
+    contract_count: int = 0
+
+    class Config:
+        from_attributes = True
+
 class ContractCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=2000)
@@ -55,12 +67,12 @@ class ContractRead(BaseModel):
     value: float
     version: int
     tags: List[TagRead] = []
-    tags: List[TagRead] = []
+    lists: List[ContractListRead] = []
     notice_period: int
     file_extension: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class AuditLogRead(BaseModel):
@@ -114,3 +126,15 @@ class PermissionRead(BaseModel):
     class Config:
         from_attributes = True
 
+
+# Contract List Schemas
+class ContractListCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    color: str = Field(default="#6366f1", pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class ContractListUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    color: Optional[str] = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")

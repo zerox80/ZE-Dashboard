@@ -1,11 +1,14 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiPlus, FiDownload, FiCalendar, FiClock, FiDollarSign, FiTrash2 } from 'react-icons/fi'
+import { useSearchParams } from 'react-router-dom'
+import { FiPlus, FiDownload, FiCalendar, FiClock, FiDollarSign, FiTrash2, FiFolder } from 'react-icons/fi'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import api from '../api'
 import UploadModal from '../components/UploadModal'
 import CommandPalette from '../components/CommandPalette'
 import AuditModal from '../components/AuditModal'
+import SearchFilterBar, { FilterState } from '../components/SearchFilterBar'
+import AddToListModal from '../components/AddToListModal'
 
 interface Contract {
     id: number
@@ -17,6 +20,7 @@ interface Contract {
     uploaded_at: string
     value: number
     tags: { name: string, color: string }[]
+    lists?: { id: number, name: string, color: string }[]
     version?: number
     file_extension: string
 }
@@ -24,16 +28,50 @@ interface Contract {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 const Dashboard: React.FC = () => {
+    const [searchParams] = useSearchParams()
     const [isUploadOpen, setIsUploadOpen] = useState(false)
     const [isAuditOpen, setIsAuditOpen] = useState(false)
     const [auditContract, setAuditContract] = useState<{ id: number, title: string } | null>(null)
     const [editingContract, setEditingContract] = useState<Contract | null>(null)
+    const [isAddToListOpen, setIsAddToListOpen] = useState(false)
+    const [addToListContract, setAddToListContract] = useState<{ id: number, title: string } | null>(null)
+    const [filters, setFilters] = useState<FilterState | null>(null)
     const queryClient = useQueryClient()
 
-    const { data: contracts, isLoading, refetch } = useQuery<Contract[]>(['contracts'], async () => {
-        const res = await api.get('/contracts')
-        return res.data
-    })
+    // Check for list_id in URL params (from Lists page navigation)
+    const urlListId = searchParams.get('list_id')
+
+    const handleFiltersChange = useCallback((newFilters: FilterState) => {
+        setFilters(newFilters)
+    }, [])
+
+    const { data: contracts, isLoading, refetch } = useQuery<Contract[]>(
+        ['contracts', filters, urlListId],
+        async () => {
+            const params: any = {}
+
+            if (filters) {
+                if (filters.q) params.q = filters.q
+                if (filters.tags.length > 0) params.tags = filters.tags.join(',')
+                if (filters.listId !== null) params.list_id = filters.listId
+                if (filters.minValue) params.min_value = parseFloat(filters.minValue)
+                if (filters.maxValue) params.max_value = parseFloat(filters.maxValue)
+                if (filters.startDateFrom) params.start_date_from = filters.startDateFrom
+                if (filters.startDateTo) params.start_date_to = filters.startDateTo
+                if (filters.status) params.status = filters.status
+                if (filters.sortBy) params.sort_by = filters.sortBy
+                if (filters.sortOrder) params.sort_order = filters.sortOrder
+            }
+
+            // URL list_id takes precedence (from Lists page navigation)
+            if (urlListId && !filters?.listId) {
+                params.list_id = parseInt(urlListId)
+            }
+
+            const res = await api.get('/contracts', { params })
+            return res.data
+        }
+    )
 
     const handleDelete = async (id: number, title: string) => {
         if (window.confirm(`Möchten Sie den Vertrag "${title}" wirklich löschen?`)) {
@@ -146,7 +184,9 @@ const Dashboard: React.FC = () => {
                 </button>
             </div>
 
-            {/* Analytics Row */}
+            {/* Search and Filter Bar */}
+            <SearchFilterBar onFiltersChange={handleFiltersChange} />
+
             {/* Analytics Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 backdrop-blur-sm">
@@ -277,6 +317,9 @@ const Dashboard: React.FC = () => {
                             {contract.tags?.map((tag, i) => (
                                 <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-700 text-gray-300 border border-gray-600">#{tag.name}</span>
                             ))}
+                            {contract.lists?.map((list, i) => (
+                                <span key={`list-${i}`} className="text-[10px] px-2 py-0.5 rounded-full text-white border" style={{ backgroundColor: `${list.color}30`, borderColor: list.color, color: list.color }}>{list.name}</span>
+                            ))}
                         </div>
 
                         <p className="text-sm text-gray-400 mb-4 line-clamp-2 h-10">{contract.description || "Keine Beschreibung vorhanden."}</p>
@@ -303,6 +346,16 @@ const Dashboard: React.FC = () => {
                             <button className="px-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-400 hover:text-white transition-colors">
                                 v{contract.version || 1}
                             </button>
+                            <button
+                                onClick={() => {
+                                    setAddToListContract({ id: contract.id, title: contract.title });
+                                    setIsAddToListOpen(true);
+                                }}
+                                className="px-3 bg-indigo-900/30 hover:bg-indigo-900/50 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
+                                title="Zu Liste hinzufügen"
+                            >
+                                <FiFolder />
+                            </button>
                         </div>
                     </div>
                 ))}
@@ -321,6 +374,15 @@ const Dashboard: React.FC = () => {
                 onClose={() => setIsAuditOpen(false)}
                 contractId={auditContract?.id || null}
                 contractTitle={auditContract?.title || ''}
+            />
+            <AddToListModal
+                isOpen={isAddToListOpen}
+                onClose={() => {
+                    setIsAddToListOpen(false);
+                    setAddToListContract(null);
+                }}
+                contractId={addToListContract?.id || null}
+                contractTitle={addToListContract?.title || ''}
             />
         </div>
     )

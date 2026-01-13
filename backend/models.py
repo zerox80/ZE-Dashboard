@@ -30,6 +30,23 @@ class ContractPermission(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id", index=True)
     contract_id: int = Field(foreign_key="contract.id", index=True)
     permission_level: str = Field(default="read")  # "read", "write", "full"
+
+
+# Join table for Contracts and Lists
+class ContractListLink(SQLModel, table=True):
+    contract_id: Optional[int] = Field(default=None, foreign_key="contract.id", primary_key=True)
+    list_id: Optional[int] = Field(default=None, foreign_key="contractlist.id", primary_key=True)
+
+
+class ContractList(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    description: Optional[str] = None
+    color: str = "#6366f1"  # Default indigo
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    contracts: List["Contract"] = Relationship(back_populates="lists", link_model=ContractListLink)
+
     
 class Contract(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -52,6 +69,7 @@ class Contract(SQLModel, table=True):
     
     # Relationships
     tags: List[Tag] = Relationship(back_populates="contracts", link_model=ContractTagLink)
+    lists: List["ContractList"] = Relationship(back_populates="contracts", link_model=ContractListLink)
     
     # We could adding a children relationship for version history if needed
     # children: List["Contract"] = Relationship(sa_relationship_kwargs={"remote_side": "Contract.parent_id"})

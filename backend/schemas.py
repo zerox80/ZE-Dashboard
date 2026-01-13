@@ -27,6 +27,16 @@ class TagRead(BaseModel):
     color: str
 
 
+class TagCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    color: str = Field(default="#3b82f6", pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class TagUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=50)
+    color: Optional[str] = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+
+
 class ContractListRead(BaseModel):
     id: int
     name: str

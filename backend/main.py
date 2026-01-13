@@ -22,7 +22,7 @@ from slowapi.errors import RateLimitExceeded
 
 from database import create_db_and_tables, get_session
 from models import User, Contract, Tag, ContractTagLink, AuditLog, ContractPermission, ContractList, ContractListLink
-from schemas import ContractRead, Token, UserCreate, ContractCreate, ContractUpdate, AuditLogRead, OTPVerify, TagRead, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate
+from schemas import ContractRead, Token, UserCreate, ContractCreate, ContractUpdate, AuditLogRead, OTPVerify, TagRead, TagCreate, TagUpdate, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate
 from auth import verify_password, create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES
 from security_utils import log_audit, add_watermark
 
@@ -172,7 +172,7 @@ async def login_for_access_token(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False, # Force False for localhost
+        secure=PRODUCTION_MODE,  # Secure in production, allow HTTP in dev
         samesite="lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
@@ -573,8 +573,94 @@ def delete_contract(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.get("/tags", response_model=List[TagRead])
-def get_tags(session: Session = Depends(get_session)):
+def get_tags(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """Get all tags (requires authentication)"""
     return session.exec(select(Tag)).all()
+
+
+@app.post("/tags", response_model=TagRead, status_code=201)
+def create_tag(
+    tag_data: TagCreate,
+    request: Request,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session)
+):
+    """Create a new tag (Admin only)"""
+    # Check if tag name already exists
+    existing = session.exec(select(Tag).where(Tag.name == tag_data.name)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Tag mit diesem Namen existiert bereits")
+    
+    new_tag = Tag(name=tag_data.name, color=tag_data.color)
+    session.add(new_tag)
+    session.commit()
+    session.refresh(new_tag)
+    
+    log_audit(session, admin.id, "CREATE_TAG", f"Created tag '{new_tag.name}'", request.client.host, request.headers.get("user-agent"))
+    return new_tag
+
+
+@app.put("/tags/{tag_id}", response_model=TagRead)
+def update_tag(
+    tag_id: int,
+    tag_data: TagUpdate,
+    request: Request,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session)
+):
+    """Update an existing tag (Admin only)"""
+    tag = session.get(Tag, tag_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag nicht gefunden")
+    
+    changes = []
+    
+    if tag_data.name is not None and tag_data.name != tag.name:
+        # Check if new name already exists
+        existing = session.exec(select(Tag).where(Tag.name == tag_data.name)).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Tag mit diesem Namen existiert bereits")
+        changes.append(f"name: '{tag.name}' -> '{tag_data.name}'")
+        tag.name = tag_data.name
+    
+    if tag_data.color is not None and tag_data.color != tag.color:
+        changes.append(f"color: '{tag.color}' -> '{tag_data.color}'")
+        tag.color = tag_data.color
+    
+    if changes:
+        session.add(tag)
+        session.commit()
+        session.refresh(tag)
+        log_audit(session, admin.id, "UPDATE_TAG", f"Updated tag '{tag.name}': {'; '.join(changes)}", request.client.host, request.headers.get("user-agent"))
+    
+    return tag
+
+
+@app.delete("/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_tag(
+    tag_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session)
+):
+    """Delete a tag (Admin only). Removes tag from all contracts."""
+    tag = session.get(Tag, tag_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag nicht gefunden")
+    
+    tag_name = tag.name
+    
+    # Remove all contract-tag links first
+    session.exec(delete(ContractTagLink).where(ContractTagLink.tag_id == tag_id))
+    
+    session.delete(tag)
+    session.commit()
+    
+    log_audit(session, admin.id, "DELETE_TAG", f"Deleted tag '{tag_name}'", request.client.host, request.headers.get("user-agent"))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.get("/audit-logs", response_model=List[AuditLogRead])
 def get_audit_logs(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):

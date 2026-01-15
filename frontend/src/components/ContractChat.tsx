@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiX, FiSend, FiMessageCircle } from 'react-icons/fi'
+import ReactMarkdown from 'react-markdown'
 import api from '../api'
 
 interface ContractChatProps {
@@ -128,11 +129,17 @@ const ContractChat: React.FC<ContractChatProps> = ({ isOpen, onClose, contractId
                                 >
                                     <div
                                         className={`max-w-[85%] rounded-2xl px-4 py-3 ${message.role === 'user'
-                                                ? 'bg-blue-600 text-white'
-                                                : 'bg-gray-800 text-gray-100 border border-gray-700'
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-800 text-gray-100 border border-gray-700'
                                             }`}
                                     >
-                                        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                                        {message.role === 'user' ? (
+                                            <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                                        ) : (
+                                            <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-600">
+                                                <ReactMarkdown>{message.content}</ReactMarkdown>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}

@@ -32,25 +32,38 @@ def get_client() -> Mistral:
 async def analyze_contract_pdf(pdf_bytes: bytes) -> dict:
     """
     Analyze a PDF contract and extract structured data.
+    Converts PDF to images first since Mistral requires image input.
     
     Returns:
         dict with keys: title, description, value, start_date, end_date, notice_period, tags
     """
-    client = get_client()
-    pdf_base64 = base64.b64encode(pdf_bytes).decode()
+    import fitz  # PyMuPDF
+    from io import BytesIO
     
-    response = await client.chat.complete_async(
-        model=MODEL,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": f"data:application/pdf;base64,{pdf_base64}"
-                },
-                {
-                    "type": "text",
-                    "text": """Analysiere diesen Vertrag sorgfältig und extrahiere die folgenden Informationen.
+    client = get_client()
+    
+    # Convert PDF to images (first 3 pages max for cost efficiency)
+    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    images_base64 = []
+    
+    for page_num in range(min(3, len(pdf_doc))):
+        page = pdf_doc[page_num]
+        # Render at 150 DPI for good quality but not too large
+        pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
+        img_bytes = pix.tobytes("png")
+        img_base64 = base64.b64encode(img_bytes).decode()
+        images_base64.append(f"data:image/png;base64,{img_base64}")
+    
+    pdf_doc.close()
+    
+    # Build content with all page images
+    content = []
+    for img_b64 in images_base64:
+        content.append({"type": "image_url", "image_url": img_b64})
+    
+    content.append({
+        "type": "text",
+        "text": """Analysiere diesen Vertrag sorgfältig und extrahiere die folgenden Informationen.
 Antworte NUR mit einem validen JSON-Objekt, ohne zusätzlichen Text oder Erklärungen.
 
 {
@@ -69,9 +82,11 @@ Regeln:
 - notice_period: Kündigungsfrist in Tagen (Standard: 30)
 - tags: 1-3 passende Kategorien (z.B. "Software", "Lizenz", "Miete", "Service")
 - Falls ein Wert nicht ermittelbar ist, verwende null"""
-                }
-            ]
-        }],
+    })
+    
+    response = await client.chat.complete_async(
+        model=MODEL,
+        messages=[{"role": "user", "content": content}],
         response_format={"type": "json_object"}
     )
     
@@ -109,6 +124,7 @@ Regeln:
 async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
     """
     Chat with AI about a specific contract.
+    Converts PDF to images first since Mistral requires image input.
     
     Args:
         pdf_bytes: The PDF file content
@@ -117,8 +133,32 @@ async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
     Returns:
         AI-generated answer
     """
+    import fitz  # PyMuPDF
+    
     client = get_client()
-    pdf_base64 = base64.b64encode(pdf_bytes).decode()
+    
+    # Convert PDF to images (first 5 pages for chat to get more context)
+    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    images_base64 = []
+    
+    for page_num in range(min(5, len(pdf_doc))):
+        page = pdf_doc[page_num]
+        pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
+        img_bytes = pix.tobytes("png")
+        img_base64 = base64.b64encode(img_bytes).decode()
+        images_base64.append(f"data:image/png;base64,{img_base64}")
+    
+    pdf_doc.close()
+    
+    # Build content with all page images + question
+    content = []
+    for img_b64 in images_base64:
+        content.append({"type": "image_url", "image_url": img_b64})
+    
+    content.append({
+        "type": "text",
+        "text": f"Frage zum Vertrag: {question}"
+    })
     
     response = await client.chat.complete_async(
         model=MODEL,
@@ -132,18 +172,10 @@ Wenn du etwas nicht im Dokument findest, sage das ehrlich."""
             },
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": f"data:application/pdf;base64,{pdf_base64}"
-                    },
-                    {
-                        "type": "text",
-                        "text": f"Frage zum Vertrag: {question}"
-                    }
-                ]
+                "content": content
             }
         ]
     )
     
     return response.choices[0].message.content
+

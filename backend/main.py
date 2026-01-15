@@ -1238,3 +1238,110 @@ def get_list_contracts(
     ).all()
     
     return contracts
+
+
+# ========================================
+#           AI FEATURES (Mistral Large 3)
+# ========================================
+
+from schemas import ContractAnalysisResult, ChatRequest, ChatResponse
+
+
+@app.post("/contracts/analyze", response_model=ContractAnalysisResult)
+async def analyze_contract_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Analyze a PDF contract using Mistral AI and extract structured data.
+    Returns auto-fill suggestions for contract form fields.
+    """
+    if not os.getenv("MISTRAL_API_KEY"):
+        raise HTTPException(
+            status_code=503, 
+            detail="KI-Analyse nicht verfügbar. MISTRAL_API_KEY nicht konfiguriert."
+        )
+    
+    # Validate file type
+    mime = magic.Magic(mime=True)
+    header = await file.read(2048)
+    await file.seek(0)
+    file_type = mime.from_buffer(header)
+    
+    if file_type != "application/pdf":
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Nur PDF-Dateien werden unterstützt. Erhalten: {file_type}"
+        )
+    
+    # Read full file
+    pdf_bytes = await file.read()
+    
+    try:
+        from ai_service import analyze_contract_pdf as analyze_pdf
+        result = await analyze_pdf(pdf_bytes)
+        return ContractAnalysisResult(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        print(f"[AI ERROR] Contract analysis failed: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="KI-Analyse fehlgeschlagen. Bitte versuche es erneut."
+        )
+
+
+@app.post("/contracts/{contract_id}/chat", response_model=ChatResponse)
+async def chat_with_contract(
+    contract_id: int,
+    chat_req: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """
+    Chat with AI about a specific contract.
+    Ask questions about contract terms, dates, conditions, etc.
+    """
+    if not os.getenv("MISTRAL_API_KEY"):
+        raise HTTPException(
+            status_code=503, 
+            detail="KI-Chat nicht verfügbar. MISTRAL_API_KEY nicht konfiguriert."
+        )
+    
+    contract = session.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Vertrag nicht gefunden")
+    
+    # Check permission
+    if not check_contract_permission(current_user, contract_id, "read", session):
+        raise HTTPException(status_code=403, detail="Keine Berechtigung für diesen Vertrag")
+    
+    if not os.path.exists(contract.file_path):
+        raise HTTPException(status_code=404, detail="Vertragsdatei nicht gefunden")
+    
+    try:
+        with open(contract.file_path, "rb") as f:
+            pdf_bytes = f.read()
+        
+        from ai_service import chat_about_contract
+        answer = await chat_about_contract(pdf_bytes, chat_req.question)
+        return ChatResponse(answer=answer)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        print(f"[AI ERROR] Contract chat failed: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="KI-Chat fehlgeschlagen. Bitte versuche es erneut."
+        )
+
+
+@app.get("/ai/status")
+def get_ai_status(current_user: User = Depends(get_current_user)):
+    """Check if AI features are available."""
+    has_key = bool(os.getenv("MISTRAL_API_KEY"))
+    return {
+        "available": has_key,
+        "model": "mistral-large-latest" if has_key else None,
+        "features": ["contract_analysis", "contract_chat"] if has_key else []
+    }

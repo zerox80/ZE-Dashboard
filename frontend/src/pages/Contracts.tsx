@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiPlus, FiDownload, FiCalendar, FiClock, FiDollarSign, FiTrash2, FiAlertTriangle, FiCheckCircle, FiAlertOctagon } from 'react-icons/fi'
+import { FiPlus, FiDownload, FiCalendar, FiClock, FiDollarSign, FiTrash2, FiAlertTriangle, FiCheckCircle, FiAlertOctagon, FiMessageCircle } from 'react-icons/fi'
 import api from '../api'
 import UploadModal from '../components/UploadModal'
+import ContractChat from '../components/ContractChat'
 import { motion } from 'framer-motion'
 
 interface Contract {
@@ -23,6 +24,7 @@ interface Contract {
 const Contracts: React.FC = () => {
     const [isUploadOpen, setIsUploadOpen] = useState(false)
     const [editingContract, setEditingContract] = useState<Contract | null>(null)
+    const [chatContract, setChatContract] = useState<Contract | null>(null)
     const queryClient = useQueryClient()
 
     const { data: contracts, isLoading } = useQuery<Contract[]>(['contracts'], async () => {
@@ -132,6 +134,13 @@ const Contracts: React.FC = () => {
                         >
                             <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
+                                    onClick={() => setChatContract(contract)}
+                                    className="p-2 bg-purple-900/50 hover:bg-purple-900 text-purple-300 rounded-lg transition-colors"
+                                    title="Mit KI chatten"
+                                >
+                                    <FiMessageCircle />
+                                </button>
+                                <button
                                     onClick={() => { setEditingContract(contract); setIsUploadOpen(true); }}
                                     className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
                                 >
@@ -216,6 +225,14 @@ const Contracts: React.FC = () => {
                     setEditingContract(null);
                 }}
                 initialData={editingContract}
+            />
+
+            {/* AI Contract Chat */}
+            <ContractChat
+                isOpen={!!chatContract}
+                onClose={() => setChatContract(null)}
+                contractId={chatContract?.id || 0}
+                contractTitle={chatContract?.title || ''}
             />
         </div>
     )

@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiUploadCloud, FiX } from 'react-icons/fi'
+import { FiUploadCloud, FiX, FiZap } from 'react-icons/fi'
 import api from '../api'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -21,6 +21,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
     const [endDate, setEndDate] = useState('')
     const [noticePeriod, setNoticePeriod] = useState('30')
     const [uploading, setUploading] = useState(false)
+    const [analyzing, setAnalyzing] = useState(false)
 
     const queryClient = useQueryClient()
 
@@ -67,6 +68,45 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
     }, [])
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, maxFiles: 1 })
+
+    // AI Analysis Handler
+    const handleAnalyze = async () => {
+        if (!file) return
+
+        // Only allow PDF files for analysis
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            alert('KI-Analyse funktioniert nur mit PDF-Dateien.')
+            return
+        }
+
+        setAnalyzing(true)
+        try {
+            const formData = new FormData()
+            formData.append('file', file)
+
+            const response = await api.post('/contracts/analyze', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            })
+
+            const data = response.data
+
+            // Auto-fill form fields from AI response
+            if (data.title) setTitle(data.title)
+            if (data.description) setDescription(data.description)
+            if (data.value !== null && data.value !== undefined) setValue(data.value.toString())
+            if (data.start_date) setStartDate(data.start_date)
+            if (data.end_date) setEndDate(data.end_date)
+            if (data.notice_period) setNoticePeriod(data.notice_period.toString())
+            if (data.tags && data.tags.length > 0) setTags(data.tags.join(', '))
+
+        } catch (error: any) {
+            console.error('AI Analysis failed', error)
+            const detail = error.response?.data?.detail || error.message || 'Unbekannter Fehler'
+            alert(`KI-Analyse fehlgeschlagen: ${detail}`)
+        } finally {
+            setAnalyzing(false)
+        }
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -156,6 +196,28 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
                                         </p>
                                     )}
                                 </div>
+
+                                {/* AI Analyze Button - Only show for new contracts with PDF files */}
+                                {file && !initialData && file.name.toLowerCase().endsWith('.pdf') && (
+                                    <button
+                                        type="button"
+                                        onClick={handleAnalyze}
+                                        disabled={analyzing || uploading}
+                                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white py-3 rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-purple-500/25"
+                                    >
+                                        {analyzing ? (
+                                            <>
+                                                <span className="animate-spin"><FiZap /></span>
+                                                <span>KI analysiert Vertrag...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FiZap className="text-yellow-300" />
+                                                <span>Mit KI automatisch ausfüllen</span>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>

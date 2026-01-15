@@ -148,3 +148,25 @@ class ContractListUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     color: Optional[str] = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+# AI Feature Schemas
+class ContractAnalysisResult(BaseModel):
+    """Result from AI contract analysis."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    value: Optional[float] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    notice_period: Optional[int] = 30
+    tags: List[str] = []
+
+
+class ChatRequest(BaseModel):
+    """Request body for contract chat."""
+    question: str = Field(..., min_length=1, max_length=2000)
+
+
+class ChatResponse(BaseModel):
+    """Response from contract chat."""
+    answer: str

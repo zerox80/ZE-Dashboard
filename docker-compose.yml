@@ -12,6 +12,7 @@ services:
       - DEBUG_MODE=${DEBUG_MODE:-false}
       - RATE_LIMIT_LOGIN=${RATE_LIMIT_LOGIN:-5/minute}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
     volumes:
       - ./data:/app/data
       - ./backend/uploads:/app/uploads

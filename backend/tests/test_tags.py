@@ -31,7 +31,7 @@ class TestTagsCRUD:
                 "color": "#ff0000"
             }
         )
-        assert response.status_code == 200
+        assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Important"
         assert data["color"] == "#ff0000"
@@ -80,7 +80,7 @@ class TestTagsCRUD:
         
         # Then delete it
         response = admin_client.delete(f"/tags/{tag.id}")
-        assert response.status_code == 200
+        assert response.status_code == 204
     
     def test_delete_tag_nonexistent(self, admin_client: TestClient):
         """Test deleting a tag that doesn't exist."""

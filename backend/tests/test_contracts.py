@@ -55,7 +55,7 @@ class TestContractCRUD:
                 "title": "Test Contract",
                 "start_date": "2024-01-01T00:00:00",
                 "end_date": "2024-12-31T23:59:59",
-                "value": 1000.0
+                "value": "1000.0"
             }
         )
         assert response.status_code == 422

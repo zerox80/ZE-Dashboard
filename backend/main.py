@@ -22,9 +22,9 @@ from slowapi.errors import RateLimitExceeded
 
 from database import create_db_and_tables, get_session
 from models import User, Contract, Tag, ContractTagLink, AuditLog, ContractPermission, ContractList, ContractListLink
-from schemas import ContractRead, Token, UserCreate, ContractCreate, ContractUpdate, AuditLogRead, OTPVerify, TagRead, TagCreate, TagUpdate, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate
+from schemas import ContractRead, UserCreate, ContractRead, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate, AuditLogRead, OTPVerify, TagRead, TagCreate, TagUpdate, ContractAnalysisResult, ChatRequest, ChatResponse
 from auth import verify_password, create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES
-from security_utils import log_audit, add_watermark
+from security_utils import log_audit
 
 # Configuration
 PRODUCTION_MODE = os.getenv("PRODUCTION", "false").lower() == "true"
@@ -89,7 +89,8 @@ def on_startup():
                 Tag(name="Legal", color="#10b981"),
                 Tag(name="HR", color="#f59e0b")
             ]
-            for t in tags: session.add(t)
+            for t in tags: 
+                session.add(t)
             session.commit()
 
 async def get_current_user(
@@ -139,7 +140,7 @@ async def login_for_access_token(
     # Check 2FA if enabled
     if user.totp_secret:
         # Require OTP
-        otp_code = form_data.client_secret # We can reuse client_secret field or expect a custom header/field
+        # otp_code = form_data.client_secret # Removed unused assignment
         # NOTE: OAuth2PasswordRequestForm has client_secret but it is optional.
         # Alternatively, we can parse it from body if we extend the form or use a separate param.
         # For strict compliance, let's assume the frontend sends it or we fail.
@@ -376,7 +377,8 @@ async def create_contract(
         tag_list = tags.split(",")
         for t_name in tag_list:
             t_name = t_name.strip()
-            if not t_name: continue
+            if not t_name: 
+                continue
             # Find or create tag
             tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
             if not tag:
@@ -394,7 +396,7 @@ async def create_contract(
     log_audit(session, current_user.id, "UPLOAD", f"[CID:{contract.id}] Uploaded contract {contract.title}", request.client.host, request.headers.get("user-agent"))
     return contract
 
-from fastapi.responses import StreamingResponse
+# Removed unused StreamingResponse import
 @app.get("/contracts/{contract_id}/download")
 def download_contract(contract_id: int, request: Request, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     contract = session.get(Contract, contract_id)
@@ -1244,7 +1246,7 @@ def get_list_contracts(
 #           AI FEATURES (Mistral Large 3)
 # ========================================
 
-from schemas import ContractAnalysisResult, ChatRequest, ChatResponse
+# Imports moved to top
 
 
 @app.post("/contracts/analyze", response_model=ContractAnalysisResult)

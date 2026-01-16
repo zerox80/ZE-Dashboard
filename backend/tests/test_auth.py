@@ -59,10 +59,10 @@ class TestAuthentication:
 class TestUserCreation:
     """Test user registration."""
     
-    def test_create_user_invalid_username_short(self, client: TestClient):
+    def test_create_user_invalid_username_short(self, admin_client: TestClient):
         """Test username validation - too short."""
-        response = client.post(
-            "/users",
+        response = admin_client.post(
+            "/admin/users",
             json={
                 "username": "ab",  # Too short (min 3)
                 "password": "validpassword123"
@@ -70,10 +70,10 @@ class TestUserCreation:
         )
         assert response.status_code == 422
     
-    def test_create_user_invalid_password_short(self, client: TestClient):
+    def test_create_user_invalid_password_short(self, admin_client: TestClient):
         """Test password validation - too short."""
-        response = client.post(
-            "/users",
+        response = admin_client.post(
+            "/admin/users",
             json={
                 "username": "validuser",
                 "password": "short"  # Too short (min 8)
@@ -81,10 +81,10 @@ class TestUserCreation:
         )
         assert response.status_code == 422
     
-    def test_create_user_invalid_username_chars(self, client: TestClient):
+    def test_create_user_invalid_username_chars(self, admin_client: TestClient):
         """Test username with invalid characters."""
-        response = client.post(
-            "/users",
+        response = admin_client.post(
+            "/admin/users",
             json={
                 "username": "user@name!",  # Invalid chars
                 "password": "validpassword123"

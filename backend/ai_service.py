@@ -38,9 +38,9 @@ async def analyze_contract_pdf(pdf_bytes: bytes) -> dict:
         dict with keys: title, description, value, start_date, end_date, notice_period, tags
     """
     import fitz  # PyMuPDF
-    from io import BytesIO
     
     client = get_client()
+
     
     # Convert PDF to images (first 3 pages max for cost efficiency)
     pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -86,7 +86,12 @@ Regeln:
     
     response = await client.chat.complete_async(
         model=MODEL,
-        messages=[{"role": "user", "content": content}],
+        messages=[
+            {
+                "role": "user",
+                "content": content
+            }
+        ],
         response_format={"type": "json_object"}
     )
     

@@ -6,7 +6,7 @@ from pypdf import PdfReader, PdfWriter
 from sqlmodel import Session
 from models import AuditLog
 
-def log_audit(session: Session, user_id: int, action: str, details: str, ip_address: str = None, user_agent: str = None):
+def log_audit(session: Session, user_id: int, action: str, details: str, ip_address: str | None = None, user_agent: str | None = None):
     log = AuditLog(
         user_id=user_id, 
         action=action, 

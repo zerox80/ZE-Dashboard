@@ -6,7 +6,7 @@ interface ListModalProps {
     isOpen: boolean
     onClose: () => void
     onSubmit: (data: { name: string; description: string; color: string }) => void
-    initialData?: { id?: number; name: string; description?: string; color: string } | null
+    initialData?: { id?: number; name: string; description?: string | null; color: string } | null
     isLoading?: boolean
 }
 

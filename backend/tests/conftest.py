@@ -13,6 +13,9 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Set SECRET_KEY for testing before importing main/auth
+os.environ["SECRET_KEY"] = "test_secret_key"
+
 from main import app, get_current_user
 from database import get_session
 from models import User

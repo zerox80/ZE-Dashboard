@@ -37,7 +37,7 @@ describe('App', () => {
 
         // Wait for loading to finish and login form to appear
         await waitFor(() => {
-            expect(screen.getByText(/anmelden|login/i)).toBeInTheDocument();
+            expect(screen.getByText(/sign in/i)).toBeInTheDocument();
         });
     });
 });

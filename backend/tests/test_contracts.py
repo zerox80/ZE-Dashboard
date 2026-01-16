@@ -1,9 +1,7 @@
 """
 Tests for contract CRUD endpoints.
 """
-import pytest
 from fastapi.testclient import TestClient
-from io import BytesIO
 
 
 class TestContractList:

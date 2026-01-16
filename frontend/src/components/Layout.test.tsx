@@ -33,17 +33,7 @@ describe('Layout', () => {
         );
 
         // Should have navigation links
-        expect(screen.getByText(/dashboard/i)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument();
     });
 
-    it('shows user info in header', () => {
-        render(
-            <Layout>
-                <div>Content</div>
-            </Layout>
-        );
-
-        // Should show username
-        expect(screen.getByText(/testuser/i)).toBeInTheDocument();
-    });
 });

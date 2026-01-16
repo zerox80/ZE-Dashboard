@@ -69,7 +69,7 @@ describe('SearchFilterBar', () => {
 
         await waitFor(() => {
             // Should show filter options
-            expect(screen.getByText(/sortierung/i)).toBeInTheDocument();
+            expect(screen.getByText(/sortieren nach/i)).toBeInTheDocument();
         });
     });
 

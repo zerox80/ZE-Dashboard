@@ -2,8 +2,8 @@
  * Tests for App component and routing
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from './test/utils';
-import App from './App';
+import { render, screen, waitFor } from './test/utils';
+import { AppRoutes } from './App';
 
 // Mock auth context
 vi.mock('./context/AuthContext', () => ({
@@ -15,17 +15,29 @@ vi.mock('./context/AuthContext', () => ({
     }),
 }));
 
+// Mock API
+vi.mock('./api', () => ({
+    default: {
+        get: vi.fn().mockImplementation(() => Promise.reject(new Error('Auth failed'))),
+    },
+}));
+
 describe('App', () => {
-    it('renders without crashing', () => {
-        render(<App />);
-        // App should render something
+    it('renders without crashing', async () => {
+        render(<AppRoutes />);
+        // Wait for loading to finish
+        await waitFor(() => {
+            expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+        });
         expect(document.body).toBeDefined();
     });
 
-    it('redirects unauthenticated users to login', () => {
-        render(<App />);
+    it('redirects unauthenticated users to login', async () => {
+        render(<AppRoutes />);
 
-        // Should show login form for unauthenticated users
-        expect(screen.getByText(/anmelden|login/i)).toBeInTheDocument();
+        // Wait for loading to finish and login form to appear
+        await waitFor(() => {
+            expect(screen.getByText(/anmelden|login/i)).toBeInTheDocument();
+        });
     });
 });

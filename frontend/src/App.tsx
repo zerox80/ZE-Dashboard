@@ -30,7 +30,7 @@ export const UserContext = createContext<UserContextType>({
 
 export const useUser = () => useContext(UserContext)
 
-function AppRoutes() {
+export function AppRoutes() {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
     const [isLoading, setIsLoading] = useState<boolean>(true)
     const [user, setUser] = useState<UserInfo | null>(null)

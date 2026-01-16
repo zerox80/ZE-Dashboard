@@ -22,7 +22,7 @@ from slowapi.errors import RateLimitExceeded
 
 from database import create_db_and_tables, get_session
 from models import User, Contract, Tag, ContractTagLink, AuditLog, ContractPermission, ContractList, ContractListLink
-from schemas import ContractRead, UserCreate, ContractRead, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate, AuditLogRead, OTPVerify, TagRead, TagCreate, TagUpdate, ContractAnalysisResult, ChatRequest, ChatResponse
+from schemas import ContractRead, UserCreate, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate, AuditLogRead, OTPVerify, TagRead, TagCreate, TagUpdate, ContractAnalysisResult, ChatRequest, ChatResponse
 from auth import verify_password, create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES
 from security_utils import log_audit
 

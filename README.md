@@ -1,0 +1,32 @@
+# ZE Dashboard
+
+Dieses Projekt ist eine KI gestützte Plattform zur Verwaltung und Analyse von Verträgen. Es kombiniert ein modernes Web Interface mit leistungsstarken KI Funktionen zur automatischen Datenextraktion und Dokumenteninteraktion.
+
+## Hauptfunktionen
+
+Das System bietet umfassende Werkzeuge für das Vertragsmanagement:
+
+* Automatisierte Vertragsanalyse: Mithilfe von Mistral Large 3 werden wichtige Daten wie Laufzeiten, Beträge und Kündigungsfristen automatisch aus PDF Dokumenten extrahiert.
+* Interaktiver Chat: Nutzer können spezifische Fragen zu Vertragsinhalten stellen und erhalten präzise Antworten basierend auf dem Dokument.
+* Benutzer und Rollenmanagement: Eine integrierte Administration ermöglicht die Steuerung von Zugriffsrechten und Rollen.
+* Sicherheit: Das System implementiert eine Zwei Faktor Authentifizierung (TOTP) sowie detaillierte Audit Logs zur Nachverfolgbarkeit aller Aktionen.
+* Dashboard: Eine übersichtliche Darstellung bietet schnellen Zugriff auf alle Verträge sowie Filter und Tagging Funktionen.
+
+## Technische Basis
+
+Die Anwendung nutzt eine moderne Architektur:
+
+* Backend: Entwickelt mit FastAPI und SQLModel für hohe Performance und einfache Datenbankinteraktion.
+* Frontend: Eine reaktive Weboberfläche für optimale Benutzererfahrung.
+* KI Service: Integration der Mistral AI API für fortgeschrittene Sprachverarbeitung.
+* Infrastruktur: Containerisierung mittels Docker und Docker Compose für eine schnelle Bereitstellung.
+
+## Installation
+
+Für den Betrieb ist die Konfiguration der Umgebungsvariablen in einer .env Datei erforderlich, insbesondere der MISTRAL_API_KEY.
+
+Starten Sie die Anwendung mit folgendem Befehl im Hauptverzeichnis:
+
+docker-compose up -d
+
+Nach dem Start ist das Dashboard über den konfigurierten Nginx Proxy erreichbar. Die Datenbank wird beim ersten Start automatisch initialisiert.

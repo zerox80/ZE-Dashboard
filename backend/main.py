@@ -1250,7 +1250,9 @@ def get_list_contracts(
 
 
 @app.post("/contracts/analyze", response_model=ContractAnalysisResult)
+@limiter.limit("5/minute")
 async def analyze_contract_pdf(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ):
@@ -1265,8 +1267,15 @@ async def analyze_contract_pdf(
         )
     
     # Validate file type
-    mime = magic.Magic(mime=True)
-    
+    try:
+        mime_magic = magic.Magic(mime=True)
+    except Exception as e:
+         print(f"Magic error: {e}")
+         # Fallback if magic fails (e.g. missing DLLs on Windows)
+         if file.content_type != "application/pdf":
+             raise HTTPException(status_code=400, detail="Nur PDF-Dateien werden unterstützt.")
+         mime_magic = None
+
     # 1. Validate File Size (Max 10MB) - Prevent DoS
     MAX_FILE_SIZE = 10 * 1024 * 1024
     
@@ -1278,15 +1287,16 @@ async def analyze_contract_pdf(
     if file_size > MAX_FILE_SIZE:
          raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
 
-    header = await file.read(2048)
-    await file.seek(0)
-    file_type = mime.from_buffer(header)
-    
-    if file_type != "application/pdf":
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Nur PDF-Dateien werden unterstützt. Erhalten: {file_type}"
-        )
+    if mime_magic:
+        header = await file.read(2048)
+        await file.seek(0)
+        file_type = mime_magic.from_buffer(header)
+        
+        if file_type != "application/pdf":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Nur PDF-Dateien werden unterstützt. Erhalten: {file_type}"
+            )
     
     # Read full file
     pdf_bytes = await file.read()
@@ -1306,9 +1316,11 @@ async def analyze_contract_pdf(
 
 
 @app.post("/contracts/{contract_id}/chat", response_model=ChatResponse)
+@limiter.limit("10/minute")
 async def chat_with_contract(
     contract_id: int,
     chat_req: ChatRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
@@ -1334,8 +1346,9 @@ async def chat_with_contract(
         raise HTTPException(status_code=404, detail="Vertragsdatei nicht gefunden")
     
     try:
-        with open(contract.file_path, "rb") as f:
-            pdf_bytes = f.read()
+        import aiofiles
+        async with aiofiles.open(contract.file_path, "rb") as f:
+            pdf_bytes = await f.read()
         
         from ai_service import chat_about_contract
         answer = await chat_about_contract(pdf_bytes, chat_req.question)

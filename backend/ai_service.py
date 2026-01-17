@@ -11,11 +11,16 @@ import base64
 import json
 import os
 import re
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 # Initialize client (lazy - only when API key is available)
 _client = None
 
 MODEL = "mistral-large-latest"  # Mistral Large 3
+
+# Executor for CPU-bound tasks
+_executor = ThreadPoolExecutor(max_workers=3)
 
 
 def get_client() -> Mistral:
@@ -29,6 +34,32 @@ def get_client() -> Mistral:
     return _client
 
 
+def _process_pdf_to_images(pdf_bytes: bytes, max_pages: int = 3) -> list[str]:
+    """
+    Blocking function to convert PDF bytes to base64 images.
+    To be run in a thread pool.
+    """
+    import fitz  # PyMuPDF
+    
+    images_base64 = []
+    
+    # helper to safely close doc
+    try:
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf_doc:
+            for page_num in range(min(max_pages, len(pdf_doc))):
+                page = pdf_doc[page_num]
+                # Render at 150 DPI for good quality but not too large
+                pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
+                img_bytes = pix.tobytes("png")
+                img_base64 = base64.b64encode(img_bytes).decode()
+                images_base64.append(f"data:image/png;base64,{img_base64}")
+    except Exception as e:
+        print(f"Error processing PDF: {e}")
+        raise
+        
+    return images_base64
+
+
 async def analyze_contract_pdf(pdf_bytes: bytes) -> dict:
     """
     Analyze a PDF contract and extract structured data.
@@ -37,24 +68,16 @@ async def analyze_contract_pdf(pdf_bytes: bytes) -> dict:
     Returns:
         dict with keys: title, description, value, start_date, end_date, notice_period, tags
     """
-    import fitz  # PyMuPDF
-    
     client = get_client()
 
-    
-    # Convert PDF to images (first 3 pages max for cost efficiency)
-    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    images_base64 = []
-    
-    for page_num in range(min(3, len(pdf_doc))):
-        page = pdf_doc[page_num]
-        # Render at 150 DPI for good quality but not too large
-        pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
-        img_bytes = pix.tobytes("png")
-        img_base64 = base64.b64encode(img_bytes).decode()
-        images_base64.append(f"data:image/png;base64,{img_base64}")
-    
-    pdf_doc.close()
+    # Offload blocking PDF processing to thread pool
+    loop = asyncio.get_running_loop()
+    images_base64 = await loop.run_in_executor(
+        _executor, 
+        _process_pdf_to_images, 
+        pdf_bytes, 
+        3  # max pages
+    )
     
     # Build content with all page images
     content = []
@@ -138,22 +161,16 @@ async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
     Returns:
         AI-generated answer
     """
-    import fitz  # PyMuPDF
-    
     client = get_client()
     
-    # Convert PDF to images (first 5 pages for chat to get more context)
-    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    images_base64 = []
-    
-    for page_num in range(min(5, len(pdf_doc))):
-        page = pdf_doc[page_num]
-        pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
-        img_bytes = pix.tobytes("png")
-        img_base64 = base64.b64encode(img_bytes).decode()
-        images_base64.append(f"data:image/png;base64,{img_base64}")
-    
-    pdf_doc.close()
+    # Offload blocking PDF processing to thread pool (use 5 pages for chat)
+    loop = asyncio.get_running_loop()
+    images_base64 = await loop.run_in_executor(
+        _executor, 
+        _process_pdf_to_images, 
+        pdf_bytes, 
+        5  # max pages
+    )
     
     # Build content with all page images + question
     content = []

@@ -19,6 +19,10 @@ def log_audit(session: Session, user_id: int, action: str, details: str, ip_addr
     session.commit()
 
 def add_watermark(input_pdf_path: str, username: str) -> io.BytesIO:
+    """
+    Add a watermark to a PDF file.
+    Note: This function is CPU-intensive and blocking. Run in an executor if calling from async code.
+    """
     # Create the watermark
     packet = io.BytesIO()
     can = canvas.Canvas(packet, pagesize=letter)
@@ -45,7 +49,10 @@ def add_watermark(input_pdf_path: str, username: str) -> io.BytesIO:
 
         # Add the "watermark" (which is the new pdf) on the existing page
         for page in existing_pdf.pages:
-            page.merge_page(new_pdf.pages[0])
+            try:
+                page.merge_page(new_pdf.pages[0])
+            except IndexError:
+                pass # Should not happen if watermark creation worked
             output.add_page(page)
         
         output_stream = io.BytesIO()

@@ -406,9 +406,15 @@ async def create_contract(
             if tag:
                  contract.tags.append(tag)
             
-    session.add(contract)
-    session.commit()
-    session.refresh(contract)
+    try:
+        session.add(contract)
+        session.commit()
+        session.refresh(contract)
+    except Exception as e:
+        # Cleanup file if DB insert fails
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise e
     
     log_audit(session, current_user.id, "UPLOAD", f"[CID:{contract.id}] Uploaded contract {contract.title}", request.client.host, request.headers.get("user-agent"))
     return contract
@@ -531,12 +537,8 @@ async def update_contract(
         with open(new_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Remove old file
-        if contract.file_path and os.path.exists(contract.file_path):
-            try:
-                os.remove(contract.file_path)
-            except Exception as e:
-                print(f"Error removing old file: {e}")
+        # Mark old file for deletion AFTER commit
+        old_file_path = contract.file_path
                 
         contract.file_path = new_file_path
         changes.append("file: updated")
@@ -569,6 +571,13 @@ async def update_contract(
         session.add(contract)
         session.commit()
         session.refresh(contract)
+
+        # Now it is safe to remove the old file if it was updated
+        if 'old_file_path' in locals() and old_file_path and os.path.exists(old_file_path) and old_file_path != contract.file_path:
+             try:
+                os.remove(old_file_path)
+             except Exception as e:
+                print(f"Error removing old file: {e}")
         
         diff_summary = "; ".join(changes)
         log_audit(
@@ -756,9 +765,13 @@ def check_contract_permission(user: User, contract_id: int, required_level: str,
         .where(ContractPermission.contract_id == contract_id)
     ).first()
     
-    # NO permission entry = DEFAULT FULL ACCESS (permissions are restrictions)
+    # NO permission entry
+    # Default: READ matches "Wiki-style" open access.
+    # WRITE/FULL are restricted to protect data integrity.
     if not permission:
-        return True
+        if required_level == "read":
+            return True
+        return False
     
     level_hierarchy = {"read": 1, "write": 2, "full": 3}
     return level_hierarchy.get(permission.permission_level, 0) >= level_hierarchy.get(required_level, 0)

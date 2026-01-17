@@ -206,5 +206,9 @@ Wenn du etwas nicht im Dokument findest, sage das ehrlich."""
         ]
     )
     
-    return response.choices[0].message.content
+    response_content = response.choices[0].message.content
+    # Safety check for mypy - content can be str | None | list
+    if not isinstance(response_content, str):
+        response_content = "" if response_content is None else str(response_content)
+    return response_content
 

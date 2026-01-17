@@ -42,20 +42,22 @@ def add_watermark(input_pdf_path: str, username: str) -> io.BytesIO:
     packet.seek(0)
     new_pdf = PdfReader(packet)
     
-    # Read existing PDF
+    # Read existing PDF into memory to avoid file handle issues
     with open(input_pdf_path, "rb") as f:
-        existing_pdf = PdfReader(f)
-        output = PdfWriter()
+        pdf_bytes = f.read()
+    
+    existing_pdf = PdfReader(io.BytesIO(pdf_bytes))
+    output = PdfWriter()
 
-        # Add the "watermark" (which is the new pdf) on the existing page
-        for page in existing_pdf.pages:
-            try:
-                page.merge_page(new_pdf.pages[0])
-            except IndexError:
-                pass # Should not happen if watermark creation worked
-            output.add_page(page)
-        
-        output_stream = io.BytesIO()
-        output.write(output_stream)
-        output_stream.seek(0)
-        return output_stream
+    # Add the "watermark" (which is the new pdf) on the existing page
+    for page in existing_pdf.pages:
+        try:
+            page.merge_page(new_pdf.pages[0])
+        except IndexError:
+            pass # Should not happen if watermark creation worked
+        output.add_page(page)
+    
+    output_stream = io.BytesIO()
+    output.write(output_stream)
+    output_stream.seek(0)
+    return output_stream

@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select, delete
 from sqlalchemy import or_, func
+from sqlalchemy.exc import IntegrityError
 from typing import List, Annotated, Optional
 import shutil
 import os
@@ -10,7 +11,7 @@ import uuid
 import pyotp
 import qrcode
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import secrets
 import magic
@@ -130,7 +131,17 @@ async def login_for_access_token(
     session: Session = Depends(get_session)
 ):
     user = session.exec(select(User).where(User.username == form_data.username)).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    
+    # Mitigation against Timing Attacks:
+    # Always perform a password verification to simulate workload, even if user is not found.
+    if user:
+        is_valid = verify_password(form_data.password, user.hashed_password)
+    else:
+        # Verify against a dummy hash to consume roughly same time
+        verify_password(form_data.password, "$2b$12$MA8m9iq9ZqTVSzMjoAVSQu9AGRa5IYuE3zn/C2.qvYpPJc1y4vIR.")
+        is_valid = False
+
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -382,12 +393,18 @@ async def create_contract(
             # Find or create tag
             tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
             if not tag:
-                # Assign random color or loop
-                tag = Tag(name=t_name)
-                session.add(tag)
-                session.commit()
-                session.refresh(tag)
-            contract.tags.append(tag)
+                try:
+                    tag = Tag(name=t_name)
+                    session.add(tag)
+                    session.commit()
+                    session.refresh(tag)
+                except IntegrityError:
+                    session.rollback()
+                    # Race condition caught: tag was created by another request
+                    tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
+            
+            if tag:
+                 contract.tags.append(tag)
             
     session.add(contract)
     session.commit()
@@ -536,11 +553,17 @@ async def update_contract(
             for t_name in new_tags:
                 tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
                 if not tag:
-                    tag = Tag(name=t_name)
-                    session.add(tag)
-                    session.commit()
-                    session.refresh(tag)
-                contract.tags.append(tag)
+                    try:
+                        tag = Tag(name=t_name)
+                        session.add(tag)
+                        session.commit()
+                        session.refresh(tag)
+                    except IntegrityError:
+                        session.rollback()
+                        tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
+                
+                if tag:
+                    contract.tags.append(tag)
     
     if changes:
         session.add(contract)

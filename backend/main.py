@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select, delete
 from sqlalchemy import or_, func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 from typing import List, Annotated, Optional
 import shutil
 import os
@@ -322,6 +323,8 @@ def read_contracts(
     # Ensure unique results when joining
     statement = statement.distinct()
     
+    # Eager load relationships to prevent N+1 queries and DetachedInstanceError
+    statement = statement.options(selectinload(Contract.tags), selectinload(Contract.lists))
     contracts = session.exec(statement).all()
     return contracts
 
@@ -487,14 +490,10 @@ async def update_contract(
             old_val = getattr(contract, field_name)
             
             # Normalize dates for comparison (ignore time/timezone)
-            if field_name in ['start_date', 'end_date']:
-                # Compare only YYYY-MM-DD
-                v1 = old_val.date() if isinstance(old_val, datetime) else old_val
-                v2 = new_val.date() if isinstance(new_val, datetime) else new_val
-                if v1 != v2:
-                    changes.append(f"{field_name}: '{v1}' -> '{v2}'")
-                    setattr(contract, field_name, new_val)
-                return
+            # Normalize dates for comparison (ignore time/timezone)
+            # REMOVED: Strict date-only comparison prevented time updates.
+            # if field_name in ['start_date', 'end_date']:
+            #     ... logic removed to allow time updates ...
 
             if old_val != new_val:
                 changes.append(f"{field_name}: '{old_val}' -> '{new_val}'")
@@ -605,15 +604,18 @@ def delete_contract(
     if not check_contract_permission(current_user, contract_id, "full", session):
         raise HTTPException(status_code=403, detail="You don't have permission to delete this contract")
     
-    # Delete file if exists
-    if contract.file_path and os.path.exists(contract.file_path):
-        try:
-            os.remove(contract.file_path)
-        except Exception as e:
-            print(f"Error deleting file: {e}")
+    # Save file path before deleting record
+    file_path_to_delete = contract.file_path
 
     session.delete(contract)
     session.commit()
+
+    # Delete file if exists (After commit checks pass)
+    if file_path_to_delete and os.path.exists(file_path_to_delete):
+        try:
+            os.remove(file_path_to_delete)
+        except Exception as e:
+            print(f"Error deleting file: {e}")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -2,7 +2,7 @@
 import os
 import shutil
 import uuid
-import magic
+import aiofiles
 from fastapi import UploadFile, HTTPException
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -21,9 +21,10 @@ async def validate_file(file: UploadFile) -> str:
     # CAUTION: This consumes memory. For very large files, stream processing is better.
     # Given MAX_FILE_SIZE is 10MB, reading into memory is acceptable.
     
+    # Check size by seeking (blocking but fast for SpooledTempFile) or reading
     file.file.seek(0, 2)
     file_size = file.file.tell()
-    file.file.seek(0)
+    await file.seek(0)
     
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
@@ -31,13 +32,18 @@ async def validate_file(file: UploadFile) -> str:
     # 2. Validate File Type (Magic Numbers)
     try:
         # Check first 2048 bytes
-        header = file.file.read(2048)
-        file.file.seek(0)
+        header = await file.read(2048)
+        await file.seek(0)
         
-        # magic.from_buffer returns string like "PDF document, version 1.4"
-        # magic.Magic(mime=True) returns "application/pdf"
-        # We need a fresh instance or use the simple API
-        mime_type = magic.from_buffer(header, mime=True)
+        try:
+            import magic
+            # magic.from_buffer returns string like "PDF document, version 1.4"
+            # magic.Magic(mime=True) returns "application/pdf"
+            mime_type = magic.from_buffer(header, mime=True)
+        except ImportError:
+            # magic not installed or DLL missing
+            mime_type = file.content_type or "application/octet-stream"
+            
     except Exception as e:
         print(f"Magic validation warning: {e}")
         # Fallback to content-type header
@@ -60,9 +66,10 @@ async def validate_file(file: UploadFile) -> str:
 
     return mime_type
 
-def save_upload_file(file: UploadFile, directory: str = UPLOAD_DIR) -> str:
+async def save_upload_file(file: UploadFile, directory: str = UPLOAD_DIR) -> str:
     """
     Saves an uploaded file to the specified directory with a unique name.
+    Async version to prevent blocking code in route handlers.
     """
     os.makedirs(directory, exist_ok=True)
     
@@ -75,8 +82,11 @@ def save_upload_file(file: UploadFile, directory: str = UPLOAD_DIR) -> str:
     file_path = os.path.join(directory, unique_filename)
     
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        async with aiofiles.open(file_path, "wb") as buffer:
+            while content := await file.read(1024 * 1024):  # Read in 1MB chunks
+                await buffer.write(content)
+        # Reset cursor for potential future reads (e.g. valid chains, though usually not needed after save)
+        await file.seek(0)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File save failed: {str(e)}")
         

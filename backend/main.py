@@ -355,7 +355,7 @@ async def create_contract(
 
     # 2. Save File
     try:
-        file_path = save_upload_file(file)
+        file_path = await save_upload_file(file)
     except HTTPException as e:
         raise e
         
@@ -371,26 +371,31 @@ async def create_contract(
     
     # Handle Tags
     if tags:
-        tag_list = tags.split(",")
-        for t_name in tag_list:
-            t_name = t_name.strip()
-            if not t_name: 
-                continue
-            # Find or create tag
-            tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
-            if not tag:
-                try:
-                    tag = Tag(name=t_name)
-                    session.add(tag)
-                    session.commit()
-                    session.refresh(tag)
-                except IntegrityError:
-                    session.rollback()
-                    # Race condition caught: tag was created by another request
-                    tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        if tag_list:
+            # Optimization: Fetch existing tags in one query
+            existing_tags = session.exec(select(Tag).where(Tag.name.in_(tag_list))).all()
+            existing_map = {t.name: t for t in existing_tags}
+
+            for t_name in tag_list:
+                # Find in pre-fetched map or create
+                tag = existing_map.get(t_name)
+                
+                if not tag:
+                    try:
+                        tag = Tag(name=t_name)
+                        session.add(tag)
+                        session.commit()
+                        session.refresh(tag)
+                        existing_map[t_name] = tag
+                    except IntegrityError:
+                        session.rollback()
+                        # Race condition caught: tag was created by another request
+                        tag = session.exec(select(Tag).where(Tag.name == t_name)).first()
+                        if tag: existing_map[t_name] = tag
             
-            if tag:
-                 contract.tags.append(tag)
+                if tag:
+                     contract.tags.append(tag)
             
     try:
         session.add(contract)
@@ -418,7 +423,7 @@ def download_contract(contract_id: int, request: Request, current_user: User = D
         raise HTTPException(status_code=403, detail="You don't have permission to access this contract")
         
     try:
-        contract.file_path = resolve_file_path(contract.file_path)
+        resolved_path = resolve_file_path(contract.file_path)
     except FileNotFoundError:
         print(f"[ERROR] File not found on disk: {contract.file_path}")
         raise HTTPException(status_code=404, detail="File not found on server")
@@ -430,10 +435,10 @@ def download_contract(contract_id: int, request: Request, current_user: User = D
     # Determine basic mime types to avoid browser confusion
     # Determine basic mime types to avoid browser confusion
     import mimetypes
-    media_type, _ = mimetypes.guess_type(contract.file_path)
+    media_type, _ = mimetypes.guess_type(resolved_path)
     
     # Check explicitly for pdf to be sure
-    _, ext = os.path.splitext(contract.file_path)
+    _, ext = os.path.splitext(resolved_path)
     if ext.lower() == ".pdf":
         media_type = "application/pdf"
         
@@ -444,7 +449,7 @@ def download_contract(contract_id: int, request: Request, current_user: User = D
     filename = f"{contract.title}{ext}"
     
     from fastapi.responses import FileResponse
-    return FileResponse(contract.file_path, media_type=media_type, filename=filename)
+    return FileResponse(resolved_path, media_type=media_type, filename=filename)
 
 @app.put("/contracts/{contract_id}", response_model=ContractRead)
 async def update_contract(
@@ -498,7 +503,7 @@ async def update_contract(
         # Validate and Save
         try:
             await validate_file(file)
-            new_file_path = save_upload_file(file)
+            new_file_path = await save_upload_file(file)
         except HTTPException as e:
             raise e
         except Exception as e:

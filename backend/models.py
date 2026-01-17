@@ -1,6 +1,6 @@
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Join table for Contracts and Tags
 class ContractTagLink(SQLModel, table=True):

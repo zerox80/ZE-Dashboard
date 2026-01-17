@@ -10,7 +10,7 @@ import uuid
 import pyotp
 import qrcode
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import secrets
 import magic
@@ -1266,6 +1266,18 @@ async def analyze_contract_pdf(
     
     # Validate file type
     mime = magic.Magic(mime=True)
+    
+    # 1. Validate File Size (Max 10MB) - Prevent DoS
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    
+    # Check size by seeking to end
+    await file.seek(0, 2)
+    file_size = await file.tell()
+    await file.seek(0)
+    
+    if file_size > MAX_FILE_SIZE:
+         raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
+
     header = await file.read(2048)
     await file.seek(0)
     file_type = mime.from_buffer(header)

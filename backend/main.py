@@ -10,6 +10,7 @@ import uuid
 import pyotp
 import qrcode
 import io
+import os
 from datetime import datetime, timedelta, timezone
 
 import secrets

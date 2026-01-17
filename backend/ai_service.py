@@ -118,21 +118,28 @@ Regeln:
         response_format={"type": "json_object"}
     )
     
-    content = response.choices[0].message.content
+    response_content = response.choices[0].message.content
+    
+    # helper for mypy/safety
+    if not isinstance(response_content, str):
+        response_content = "" if response_content is None else str(response_content)
     
     # Parse JSON response
     try:
-        result = json.loads(content)
+        result = json.loads(response_content)
     except json.JSONDecodeError:
         # Try to extract JSON from response if wrapped in markdown
-        json_match = re.search(r'\{[\s\S]*\}', content)
+        json_match = re.search(r'\{[\s\S]*\}', response_content)
         if json_match:
-            result = json.loads(json_match.group())
+            try:
+                result = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                result = {}
         else:
             result = {}
     
     # Ensure all expected keys exist
-    defaults = {
+    defaults: dict = {
         "title": None,
         "description": None,
         "value": None,

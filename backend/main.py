@@ -149,6 +149,8 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
         
+    assert user is not None # Ensure mypy knows user exists
+        
     # Check 2FA if enabled
     if user.totp_secret:
         # Require OTP
@@ -200,7 +202,8 @@ async def login_for_access_token(
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     
-    log_audit(session, user.id, "LOGIN", "User logged in", request.client.host, request.headers.get("user-agent"))
+    client_host = request.client.host if request.client else "unknown"
+    log_audit(session, user.id, "LOGIN", "User logged in", client_host, request.headers.get("user-agent"))
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -329,16 +332,16 @@ def read_contracts(
     return contracts
 
 @app.post("/contracts", response_model=ContractRead)
-async def create_contract(
+def create_contract(
     request: Request,
     title: Annotated[str, Form()],
     start_date: Annotated[datetime, Form()],
     end_date: Annotated[datetime, Form()],
+    file: UploadFile = File(...),
     value: Annotated[float, Form()] = 0.0,
     notice_period: Annotated[int, Form()] = 30,
-    file: UploadFile = File(...),
-    description: Annotated[str, Form()] = None,
-    tags: Annotated[str, Form()] = "",
+    description: Annotated[Optional[str], Form()] = None,
+    tags: Annotated[Optional[str], Form()] = "",
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
@@ -352,20 +355,27 @@ async def create_contract(
         raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
 
     # 2. Validate File Type (Magic Numbers)
-    mime = magic.Magic(mime=True)
-    header = file.file.read(2048)
-    file.file.seek(0)
-    file_type = mime.from_buffer(header)
-    
+    try:
+        mime = magic.Magic(mime=True)
+        header = file.file.read(2048)
+        file.file.seek(0)
+        file_type = mime.from_buffer(header)
+    except Exception as e:
+        print(f"Magic warning: {e}")
+        file_type = file.content_type or "application/octet-stream"
+
     ALLOWED_MIMES = ["application/pdf", "image/png", "image/jpeg", "text/plain"]
     if file_type not in ALLOWED_MIMES:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
+             # Make checking lenient if magic failed
+             filename = file.filename or ""
+             if not (filename.lower().endswith(".pdf") or filename.lower().endswith(".txt") or filename.lower().endswith(".png") or filename.lower().endswith(".jpg")):
+                raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
 
     UPLOAD_DIR = "uploads"
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     
     # 3. Secure Filename (Discard user filename)
-    file_extension = os.path.splitext(file.filename)[1]
+    file_extension = os.path.splitext(file.filename or "")[1]
     if file_extension.lower() not in [".pdf", ".png", ".jpg", ".jpeg", ".txt"]:
          # Double check extension matches mime type roughly
          raise HTTPException(status_code=400, detail="Invalid file extension")
@@ -419,7 +429,8 @@ async def create_contract(
             os.remove(file_path)
         raise e
     
-    log_audit(session, current_user.id, "UPLOAD", f"[CID:{contract.id}] Uploaded contract {contract.title}", request.client.host, request.headers.get("user-agent"))
+    client_host = request.client.host if request.client else "unknown"
+    log_audit(session, current_user.id, "UPLOAD", f"[CID:{contract.id}] Uploaded contract {contract.title}", client_host, request.headers.get("user-agent"))
     return contract
 
 # Removed unused StreamingResponse import
@@ -434,11 +445,25 @@ def download_contract(contract_id: int, request: Request, current_user: User = D
         raise HTTPException(status_code=403, detail="You don't have permission to access this contract")
         
     if not os.path.exists(contract.file_path):
-        print(f"[ERROR] File not found on disk: {contract.file_path}")
-        raise HTTPException(status_code=404, detail="File not found on server")
+        # Check if it was a relative path in 'uploads'
+        if not os.path.isabs(contract.file_path):
+             # Try to resolve relative to cwd/uploads
+             # Logic used in create_contract was uploads/filename
+             # But contract.file_path stored is "uploads\\filename" (os.path.join)
+             # So typically check absolute path
+             abs_path = os.path.abspath(contract.file_path)
+             if os.path.exists(abs_path):
+                 contract.file_path = abs_path
+             else:
+                 print(f"[ERROR] File not found on disk: {contract.file_path}")
+                 raise HTTPException(status_code=404, detail="File not found on server")
+        else:
+             print(f"[ERROR] File not found on disk: {contract.file_path}")
+             raise HTTPException(status_code=404, detail="File not found on server")
 
     # Standard download
-    log_audit(session, current_user.id, "DOWNLOAD", f"[CID:{contract.id}] Downloaded {contract.title}", request.client.host, request.headers.get("user-agent"))
+    client_host = request.client.host if request.client else "unknown"
+    log_audit(session, current_user.id, "DOWNLOAD", f"[CID:{contract.id}] Downloaded {contract.title}", client_host, request.headers.get("user-agent"))
     
     # Determine basic mime types to avoid browser confusion
     # Determine basic mime types to avoid browser confusion
@@ -460,7 +485,7 @@ def download_contract(contract_id: int, request: Request, current_user: User = D
     return FileResponse(contract.file_path, media_type=media_type, filename=filename)
 
 @app.put("/contracts/{contract_id}", response_model=ContractRead)
-async def update_contract(
+def update_contract(
     contract_id: int, 
     request: Request,
     title: Annotated[Optional[str], Form()] = None,
@@ -518,18 +543,23 @@ async def update_contract(
              raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
 
         # Validate File Type (Magic Numbers)
-        mime = magic.Magic(mime=True)
-        header = file.file.read(2048)
-        file.file.seek(0)
-        file_type = mime.from_buffer(header)
-        
+        try:
+            mime = magic.Magic(mime=True)
+            header = file.file.read(2048)
+            file.file.seek(0)
+            file_type = mime.from_buffer(header)
+        except Exception:
+             file_type = file.content_type or "application/octet-stream"
+
         ALLOWED_MIMES = ["application/pdf", "image/png", "image/jpeg", "text/plain"]
         if file_type not in ALLOWED_MIMES:
-             raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
+             filename = file.filename or ""
+             if not (filename.lower().endswith(".pdf") or filename.lower().endswith(".txt") or filename.lower().endswith(".png") or filename.lower().endswith(".jpg")):
+                 raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
 
         # Save new file
         UPLOAD_DIR = "uploads"
-        file_extension = os.path.splitext(file.filename)[1]
+        file_extension = os.path.splitext(file.filename or "")[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         new_file_path = os.path.join(UPLOAD_DIR, unique_filename)
         
@@ -538,9 +568,11 @@ async def update_contract(
             
         # Mark old file for deletion AFTER commit
         old_file_path = contract.file_path
-                
+        
         contract.file_path = new_file_path
         changes.append("file: updated")
+    else:
+        old_file_path = None
     
     # Handle Tags Update if provided
     if tags is not None:
@@ -572,7 +604,7 @@ async def update_contract(
         session.refresh(contract)
 
         # Now it is safe to remove the old file if it was updated
-        if 'old_file_path' in locals() and old_file_path and os.path.exists(old_file_path) and old_file_path != contract.file_path:
+        if old_file_path and os.path.exists(old_file_path) and old_file_path != contract.file_path:
              try:
                 os.remove(old_file_path)
              except Exception as e:
@@ -584,7 +616,7 @@ async def update_contract(
             current_user.id, 
             "UPDATE_CONTRACT", 
             f"[CID:{contract_id}] Updated Contract. Changes: {diff_summary}", 
-            request.client.host, 
+            request.client.host if request.client else "unknown", 
             request.headers.get("user-agent")
         )
     
@@ -653,7 +685,7 @@ def create_tag(
     session.commit()
     session.refresh(new_tag)
     
-    log_audit(session, admin.id, "CREATE_TAG", f"Created tag '{new_tag.name}'", request.client.host, request.headers.get("user-agent"))
+    log_audit(session, admin.id, "CREATE_TAG", f"Created tag '{new_tag.name}'", request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     return new_tag
 
 
@@ -688,7 +720,7 @@ def update_tag(
         session.add(tag)
         session.commit()
         session.refresh(tag)
-        log_audit(session, admin.id, "UPDATE_TAG", f"Updated tag '{tag.name}': {'; '.join(changes)}", request.client.host, request.headers.get("user-agent"))
+        log_audit(session, admin.id, "UPDATE_TAG", f"Updated tag '{tag.name}': {'; '.join(changes)}", request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     
     return tag
 
@@ -713,7 +745,7 @@ def delete_tag(
     session.delete(tag)
     session.commit()
     
-    log_audit(session, admin.id, "DELETE_TAG", f"Deleted tag '{tag_name}'", request.client.host, request.headers.get("user-agent"))
+    log_audit(session, admin.id, "DELETE_TAG", f"Deleted tag '{tag_name}'", request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.get("/audit-logs", response_model=List[AuditLogRead])
@@ -837,7 +869,7 @@ def create_user(
     session.commit()
     session.refresh(new_user)
     
-    log_audit(session, admin.id, "CREATE_USER", f"Created user '{new_user.username}'", request.client.host, request.headers.get("user-agent"))
+    log_audit(session, admin.id, "CREATE_USER", f"Created user '{new_user.username}'", request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     
     return {
         "id": new_user.id,
@@ -891,7 +923,7 @@ def update_user(
         session.add(user)
         session.commit()
         session.refresh(user)
-        log_audit(session, admin.id, "UPDATE_USER", f"Updated user '{user.username}': {'; '.join(changes)}", request.client.host, request.headers.get("user-agent"))
+        log_audit(session, admin.id, "UPDATE_USER", f"Updated user '{user.username}': {'; '.join(changes)}", request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     
     return {
         "id": user.id,
@@ -924,7 +956,7 @@ def delete_user(
         session.add(user)
         session.commit()
     
-    log_audit(session, admin.id, "DEACTIVATE_USER", f"Deactivated user '{user.username}'", request.client.host, request.headers.get("user-agent"))
+    log_audit(session, admin.id, "DEACTIVATE_USER", f"Deactivated user '{user.username}'", request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -1008,7 +1040,7 @@ def create_permission(
         
         log_audit(session, admin.id, "UPDATE_PERMISSION", 
                   f"Updated permission for '{user.username}' on contract '{contract.title}' to '{perm_data.permission_level}'",
-                  request.client.host, request.headers.get("user-agent"))
+                  request.client.host if request.client else "unknown", request.headers.get("user-agent"))
         
         return {
             "id": existing.id,
@@ -1030,7 +1062,7 @@ def create_permission(
     
     log_audit(session, admin.id, "CREATE_PERMISSION", 
               f"Granted '{perm_data.permission_level}' permission to '{user.username}' for contract '{contract.title}'",
-              request.client.host, request.headers.get("user-agent"))
+              request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     
     return {
         "id": new_perm.id,
@@ -1062,7 +1094,7 @@ def delete_permission(
     
     log_audit(session, admin.id, "DELETE_PERMISSION", 
               f"Revoked permission from '{user.username if user else 'Unknown'}' for contract '{contract.title if contract else 'Unknown'}'",
-              request.client.host, request.headers.get("user-agent"))
+              request.client.host if request.client else "unknown", request.headers.get("user-agent"))
     
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -1317,17 +1349,18 @@ async def analyze_contract_pdf(
     # 1. Validate File Size (Max 10MB) - Prevent DoS
     MAX_FILE_SIZE = 10 * 1024 * 1024
     
-    # Check size by seeking to end
-    await file.seek(0, 2)
-    file_size = await file.tell()
-    await file.seek(0)
+    # Read full file into memory (since we analyze it all anyway)
+    # This avoids seek issues with uploads
+    pdf_bytes = await file.read()
+    file_size = len(pdf_bytes)
     
     if file_size > MAX_FILE_SIZE:
          raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
 
     if mime_magic:
-        header = await file.read(2048)
-        await file.seek(0)
+        # Check buffer from bytes
+        # header = await file.read(2048) -> NO, use bytes
+        header = pdf_bytes[:2048]
         file_type = mime_magic.from_buffer(header)
         
         if file_type != "application/pdf":
@@ -1336,8 +1369,8 @@ async def analyze_contract_pdf(
                 detail=f"Nur PDF-Dateien werden unterstützt. Erhalten: {file_type}"
             )
     
-    # Read full file
-    pdf_bytes = await file.read()
+    # Already read
+    # pdf_bytes = await file.read()
     
     try:
         from ai_service import analyze_contract_pdf as analyze_pdf

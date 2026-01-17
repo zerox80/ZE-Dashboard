@@ -19,6 +19,10 @@ _client = None
 
 MODEL = "mistral-large-latest"  # Mistral Large 3
 
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 # Executor for CPU-bound tasks
 _executor = ThreadPoolExecutor(max_workers=3)
 
@@ -54,7 +58,7 @@ def _process_pdf_to_images(pdf_bytes: bytes, max_pages: int = 3) -> list[str]:
                 img_base64 = base64.b64encode(img_bytes).decode()
                 images_base64.append(f"data:image/png;base64,{img_base64}")
     except Exception as e:
-        print(f"Error processing PDF: {e}")
+        logger.error(f"Error processing PDF: {e}")
         raise
         
     return images_base64

@@ -6,16 +6,13 @@ from sqlalchemy import or_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from typing import List, Annotated, Optional
-import shutil
-import os
 import uuid
 import pyotp
 import qrcode
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import secrets
-import magic
 
 # Rate Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -27,6 +24,7 @@ from models import User, Contract, Tag, ContractTagLink, AuditLog, ContractPermi
 from schemas import ContractRead, UserCreate, UserRead, UserUpdate, PermissionCreate, PermissionRead, ContractListRead, ContractListCreate, ContractListUpdate, AuditLogRead, OTPVerify, TagRead, TagCreate, TagUpdate, ContractAnalysisResult, ChatRequest, ChatResponse
 from auth import verify_password, create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES
 from security_utils import log_audit
+from file_utils import validate_file, save_upload_file, resolve_file_path
 
 # Configuration
 PRODUCTION_MODE = os.getenv("PRODUCTION", "false").lower() == "true"
@@ -302,7 +300,7 @@ def read_contracts(
         statement = statement.where(Contract.start_date <= start_date_to)
     
     # Status filter
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if status == "active":
         statement = statement.where(Contract.end_date >= now)
     elif status == "expired":
@@ -345,46 +343,20 @@ def create_contract(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    # 1. Validate File Size (Max 10MB)
-    MAX_FILE_SIZE = 10 * 1024 * 1024
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
-    
-    if file_size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
-
-    # 2. Validate File Type (Magic Numbers)
+    # 1. Validate File
     try:
-        mime = magic.Magic(mime=True)
-        header = file.file.read(2048)
-        file.file.seek(0)
-        file_type = mime.from_buffer(header)
+        await validate_file(file)
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        print(f"Magic warning: {e}")
-        file_type = file.content_type or "application/octet-stream"
+        print(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid file")
 
-    ALLOWED_MIMES = ["application/pdf", "image/png", "image/jpeg", "text/plain"]
-    if file_type not in ALLOWED_MIMES:
-             # Make checking lenient if magic failed
-             filename = file.filename or ""
-             if not (filename.lower().endswith(".pdf") or filename.lower().endswith(".txt") or filename.lower().endswith(".png") or filename.lower().endswith(".jpg")):
-                raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
-
-    UPLOAD_DIR = "uploads"
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    
-    # 3. Secure Filename (Discard user filename)
-    file_extension = os.path.splitext(file.filename or "")[1]
-    if file_extension.lower() not in [".pdf", ".png", ".jpg", ".jpeg", ".txt"]:
-         # Double check extension matches mime type roughly
-         raise HTTPException(status_code=400, detail="Invalid file extension")
-
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # 2. Save File
+    try:
+        file_path = save_upload_file(file)
+    except HTTPException as e:
+        raise e
         
     contract = Contract(
         title=title,
@@ -444,22 +416,11 @@ def download_contract(contract_id: int, request: Request, current_user: User = D
     if not check_contract_permission(current_user, contract_id, "read", session):
         raise HTTPException(status_code=403, detail="You don't have permission to access this contract")
         
-    if not os.path.exists(contract.file_path):
-        # Check if it was a relative path in 'uploads'
-        if not os.path.isabs(contract.file_path):
-             # Try to resolve relative to cwd/uploads
-             # Logic used in create_contract was uploads/filename
-             # But contract.file_path stored is "uploads\\filename" (os.path.join)
-             # So typically check absolute path
-             abs_path = os.path.abspath(contract.file_path)
-             if os.path.exists(abs_path):
-                 contract.file_path = abs_path
-             else:
-                 print(f"[ERROR] File not found on disk: {contract.file_path}")
-                 raise HTTPException(status_code=404, detail="File not found on server")
-        else:
-             print(f"[ERROR] File not found on disk: {contract.file_path}")
-             raise HTTPException(status_code=404, detail="File not found on server")
+    try:
+        contract.file_path = resolve_file_path(contract.file_path)
+    except FileNotFoundError:
+        print(f"[ERROR] File not found on disk: {contract.file_path}")
+        raise HTTPException(status_code=404, detail="File not found on server")
 
     # Standard download
     client_host = request.client.host if request.client else "unknown"
@@ -533,38 +494,14 @@ def update_contract(
 
     # Handle File Update
     if file:
-        # Validate File Size (Max 10MB)
-        MAX_FILE_SIZE = 10 * 1024 * 1024
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        file.file.seek(0)
-        
-        if file_size > MAX_FILE_SIZE:
-             raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
-
-        # Validate File Type (Magic Numbers)
+        # Validate and Save
         try:
-            mime = magic.Magic(mime=True)
-            header = file.file.read(2048)
-            file.file.seek(0)
-            file_type = mime.from_buffer(header)
-        except Exception:
-             file_type = file.content_type or "application/octet-stream"
-
-        ALLOWED_MIMES = ["application/pdf", "image/png", "image/jpeg", "text/plain"]
-        if file_type not in ALLOWED_MIMES:
-             filename = file.filename or ""
-             if not (filename.lower().endswith(".pdf") or filename.lower().endswith(".txt") or filename.lower().endswith(".png") or filename.lower().endswith(".jpg")):
-                 raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
-
-        # Save new file
-        UPLOAD_DIR = "uploads"
-        file_extension = os.path.splitext(file.filename or "")[1]
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        new_file_path = os.path.join(UPLOAD_DIR, unique_filename)
-        
-        with open(new_file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            await validate_file(file)
+            new_file_path = save_upload_file(file)
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
             
         # Mark old file for deletion AFTER commit
         old_file_path = contract.file_path
@@ -838,7 +775,7 @@ def list_users(
             "username": u.username,
             "role": u.role,
             "is_active": u.is_active if hasattr(u, 'is_active') else True,
-            "created_at": u.created_at if hasattr(u, 'created_at') else datetime.utcnow(),
+            "created_at": u.created_at if hasattr(u, 'created_at') else datetime.now(timezone.utc),
             "has_2fa": bool(u.totp_secret)
         }
         result.append(user_dict)
@@ -863,7 +800,7 @@ def create_user(
         hashed_password=get_password_hash(user_data.password),
         role="user",
         is_active=True,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     session.add(new_user)
     session.commit()
@@ -930,7 +867,7 @@ def update_user(
         "username": user.username,
         "role": user.role,
         "is_active": user.is_active if hasattr(user, 'is_active') else True,
-        "created_at": user.created_at if hasattr(user, 'created_at') else datetime.utcnow(),
+        "created_at": user.created_at if hasattr(user, 'created_at') else datetime.now(timezone.utc),
         "has_2fa": bool(user.totp_secret)
     }
 
@@ -1336,41 +1273,20 @@ async def analyze_contract_pdf(
             detail="KI-Analyse nicht verfügbar. MISTRAL_API_KEY nicht konfiguriert."
         )
     
-    # Validate file type
+    # Use consolidated validation
     try:
-        mime_magic = magic.Magic(mime=True)
+        mime_type = await validate_file(file)
+    except HTTPException as e:
+        raise e
     except Exception as e:
-         print(f"Magic error: {e}")
-         # Fallback if magic fails (e.g. missing DLLs on Windows)
-         if file.content_type != "application/pdf":
-             raise HTTPException(status_code=400, detail="Nur PDF-Dateien werden unterstützt.")
-         mime_magic = None
-
-    # 1. Validate File Size (Max 10MB) - Prevent DoS
-    MAX_FILE_SIZE = 10 * 1024 * 1024
-    
-    # Read full file into memory (since we analyze it all anyway)
-    # This avoids seek issues with uploads
-    pdf_bytes = await file.read()
-    file_size = len(pdf_bytes)
-    
-    if file_size > MAX_FILE_SIZE:
-         raise HTTPException(status_code=413, detail="File too large (Max 10MB)")
-
-    if mime_magic:
-        # Check buffer from bytes
-        # header = await file.read(2048) -> NO, use bytes
-        header = pdf_bytes[:2048]
-        file_type = mime_magic.from_buffer(header)
+        print(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid file")
         
-        if file_type != "application/pdf":
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Nur PDF-Dateien werden unterstützt. Erhalten: {file_type}"
-            )
-    
-    # Already read
-    # pdf_bytes = await file.read()
+    if mime_type != "application/pdf":
+         raise HTTPException(status_code=400, detail="Nur PDF-Dateien werden unterstützt.")
+
+    # Read full file into memory
+    pdf_bytes = await file.read()
     
     try:
         from ai_service import analyze_contract_pdf as analyze_pdf
@@ -1413,12 +1329,14 @@ async def chat_with_contract(
     if not check_contract_permission(current_user, contract_id, "read", session):
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diesen Vertrag")
     
-    if not os.path.exists(contract.file_path):
+    try:
+        abs_path = resolve_file_path(contract.file_path)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Vertragsdatei nicht gefunden")
     
     try:
         import aiofiles
-        async with aiofiles.open(contract.file_path, "rb") as f:
+        async with aiofiles.open(abs_path, "rb") as f:
             pdf_bytes = await f.read()
         
         from ai_service import chat_about_contract

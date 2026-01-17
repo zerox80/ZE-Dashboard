@@ -1,6 +1,6 @@
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Join table for Contracts and Tags
 class ContractTagLink(SQLModel, table=True):
@@ -21,7 +21,7 @@ class User(SQLModel, table=True):
     role: str = Field(default="user") # 'admin' or 'user'
     totp_secret: Optional[str] = None # For 2FA
     is_active: bool = Field(default=True)  # Deactivate users instead of deleting
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # Permission levels: "read" = view only, "write" = edit, "full" = edit + delete
@@ -43,7 +43,7 @@ class ContractList(SQLModel, table=True):
     name: str = Field(index=True)
     description: Optional[str] = None
     color: str = "#6366f1"  # Default indigo
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     contracts: List["Contract"] = Relationship(back_populates="lists", link_model=ContractListLink)
 
@@ -55,7 +55,7 @@ class Contract(SQLModel, table=True):
     start_date: datetime
     end_date: datetime
     file_path: str
-    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Cancellation Logic
     notice_period: int = Field(default=30, description="Notice period in days")
@@ -89,6 +89,6 @@ class AuditLog(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, foreign_key="user.id")
     action: str
     details: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None

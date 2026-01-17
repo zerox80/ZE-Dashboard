@@ -330,7 +330,7 @@ def read_contracts(
     return contracts
 
 @app.post("/contracts", response_model=ContractRead)
-def create_contract(
+async def create_contract(
     request: Request,
     title: Annotated[str, Form()],
     start_date: Annotated[datetime, Form()],
@@ -446,7 +446,7 @@ def download_contract(contract_id: int, request: Request, current_user: User = D
     return FileResponse(contract.file_path, media_type=media_type, filename=filename)
 
 @app.put("/contracts/{contract_id}", response_model=ContractRead)
-def update_contract(
+async def update_contract(
     contract_id: int, 
     request: Request,
     title: Annotated[Optional[str], Form()] = None,

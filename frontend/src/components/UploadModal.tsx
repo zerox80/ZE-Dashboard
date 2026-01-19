@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FiUploadCloud, FiX, FiZap } from 'react-icons/fi'
 import api from '../api'
 import { useQueryClient } from '@tanstack/react-query'
+import { formatGermanNumber, parseGermanNumber } from '../utils/formatUtils'
 
 interface UploadModalProps {
     isOpen: boolean
@@ -29,7 +30,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
         if (isOpen && initialData) {
             setTitle(initialData.title || '')
             setDescription(initialData.description || '')
-            setValue(initialData.value?.toString() || '')
+            setValue(formatGermanNumber(initialData.value) || '')
             setTags(initialData.tags?.map((t: any) => t.name).join(', ') || '')
             setNoticePeriod(initialData.notice_period?.toString() || '30')
             // Format dates for input type="date" (YYYY-MM-DD) - Use local time to avoid timezone shifts
@@ -93,7 +94,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
             // Auto-fill form fields from AI response
             if (data.title) setTitle(data.title)
             if (data.description) setDescription(data.description)
-            if (data.value !== null && data.value !== undefined) setValue(data.value.toString())
+            if (data.value !== null && data.value !== undefined) {
+                setValue(formatGermanNumber(data.value))
+            }
             if (data.start_date) setStartDate(data.start_date)
             if (data.end_date) setEndDate(data.end_date)
             if (data.notice_period) setNoticePeriod(data.notice_period.toString())
@@ -121,7 +124,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
             if (file) formData.append('file', file)
             formData.append('title', title)
             formData.append('description', description)
-            formData.append('value', value || '0')
+            formData.append('value', parseGermanNumber(value).toString())
             formData.append('notice_period', noticePeriod || '30')
             formData.append('tags', tags)
             formData.append('start_date', new Date(startDate).toISOString())
@@ -226,7 +229,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-400 mb-1">Wert (€)</label>
-                                        <input type="number" value={value} onChange={e => setValue(e.target.value)} className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" />
+                                        <input
+                                            type="text"
+                                            value={value}
+                                            onChange={e => setValue(e.target.value)}
+                                            placeholder="z.B. 17.100"
+                                            className="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                                        />
                                     </div>
                                 </div>
 

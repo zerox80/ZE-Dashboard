@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { FiPlus, FiDownload, FiCalendar, FiClock, FiDollarSign, FiTrash2, FiFolder } from 'react-icons/fi'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import api from '../api'
+import { parseGermanNumber, formatGermanNumber } from '../utils/formatUtils'
 import UploadModal from '../components/UploadModal'
 import CommandPalette from '../components/CommandPalette'
 import AuditModal from '../components/AuditModal'
@@ -54,8 +55,8 @@ const Dashboard: React.FC = () => {
                 if (filters.q) params.q = filters.q
                 if (filters.tags.length > 0) params.tags = filters.tags.join(',')
                 if (filters.listId !== null) params.list_id = filters.listId
-                if (filters.minValue) params.min_value = parseFloat(filters.minValue)
-                if (filters.maxValue) params.max_value = parseFloat(filters.maxValue)
+                if (filters.minValue) params.min_value = parseGermanNumber(filters.minValue)
+                if (filters.maxValue) params.max_value = parseGermanNumber(filters.maxValue)
                 if (filters.startDateFrom) params.start_date_from = filters.startDateFrom
                 if (filters.startDateTo) params.start_date_to = filters.startDateTo
                 if (filters.status) params.status = filters.status
@@ -331,7 +332,7 @@ const Dashboard: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-1 font-bold text-gray-400">
                                 <span>€</span>
-                                <span>{contract.value?.toLocaleString('de-DE') || 0}</span>
+                                <span>{formatGermanNumber(contract.value)}</span>
                             </div>
                         </div>
 

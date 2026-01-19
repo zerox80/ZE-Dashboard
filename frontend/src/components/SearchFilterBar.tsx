@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FiSearch, FiFilter, FiX, FiChevronDown, FiArrowUp, FiArrowDown } from 'react-icons/fi'
 import api from '../api'
+import { formatGermanNumber, parseGermanNumber } from '../utils/formatUtils'
 
 interface Tag {
     id: number
@@ -225,7 +226,7 @@ const SearchFilterBar: React.FC<SearchFilterBarProps> = ({ onFiltersChange }) =>
                         <div>
                             <label className="block text-sm font-medium text-gray-400 mb-2">Mindestwert (€)</label>
                             <input
-                                type="number"
+                                type="text"
                                 value={minValue}
                                 onChange={(e) => setMinValue(e.target.value)}
                                 placeholder="0"
@@ -235,7 +236,7 @@ const SearchFilterBar: React.FC<SearchFilterBarProps> = ({ onFiltersChange }) =>
                         <div>
                             <label className="block text-sm font-medium text-gray-400 mb-2">Höchstwert (€)</label>
                             <input
-                                type="number"
+                                type="text"
                                 value={maxValue}
                                 onChange={(e) => setMaxValue(e.target.value)}
                                 placeholder="∞"

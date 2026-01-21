@@ -52,11 +52,12 @@ def _process_pdf_to_images(pdf_bytes: bytes, max_pages: int = 3) -> list[str]:
         with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf_doc:
             for page_num in range(min(max_pages, len(pdf_doc))):
                 page = pdf_doc[page_num]
-                # Render at 150 DPI for good quality but not too large
-                pix = page.get_pixmap(matrix=fitz.Matrix(150/72, 150/72))
-                img_bytes = pix.tobytes("png")
+                # Render at 100 DPI (sufficient for OCR, saves tokens)
+                pix = page.get_pixmap(matrix=fitz.Matrix(100/72, 100/72))
+                # Use JPEG to greatly reduce data size
+                img_bytes = pix.tobytes("jpeg")
                 img_base64 = base64.b64encode(img_bytes).decode()
-                images_base64.append(f"data:image/png;base64,{img_base64}")
+                images_base64.append(f"data:image/jpeg;base64,{img_base64}")
     except Exception as e:
         logger.error(f"Error processing PDF: {e}")
         raise

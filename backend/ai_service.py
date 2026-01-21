@@ -180,7 +180,7 @@ async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
         _executor, 
         _process_pdf_to_images, 
         pdf_bytes, 
-        5  # max pages
+        15  # max pages
     )
     
     # Build content with all page images + question

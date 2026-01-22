@@ -1358,6 +1358,69 @@ async def chat_with_contract(
         )
 
 
+from fastapi.responses import StreamingResponse
+
+@app.post("/contracts/{contract_id}/chat/stream")
+@limiter.limit("10/minute")
+async def chat_with_contract_stream(
+    contract_id: int,
+    chat_req: ChatRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """
+    Stream chat responses about a contract using Server-Sent Events.
+    Tokens are sent as they arrive for real-time response display.
+    """
+    if not os.getenv("MISTRAL_API_KEY"):
+        raise HTTPException(
+            status_code=503, 
+            detail="KI-Chat nicht verfügbar. MISTRAL_API_KEY nicht konfiguriert."
+        )
+    
+    contract = session.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(status_code=404, detail="Vertrag nicht gefunden")
+    
+    # Check permission
+    if not check_contract_permission(current_user, contract_id, "read", session):
+        raise HTTPException(status_code=403, detail="Keine Berechtigung für diesen Vertrag")
+    
+    try:
+        abs_path = resolve_file_path(contract.file_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Vertragsdatei nicht gefunden")
+    
+    # Read PDF into memory
+    import aiofiles
+    async with aiofiles.open(abs_path, "rb") as f:
+        pdf_bytes = await f.read()
+    
+    async def generate_stream():
+        """Generate SSE stream from AI response."""
+        try:
+            from ai_service import chat_about_contract_stream
+            async for chunk in chat_about_contract_stream(pdf_bytes, chat_req.question):
+                # SSE format: data: <content>\n\n
+                yield f"data: {chunk}\n\n"
+            # Send done signal
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            print(f"[AI ERROR] Stream failed: {e}")
+            yield f"data: [ERROR] {str(e)}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
 @app.get("/ai/status")
 def get_ai_status(current_user: User = Depends(get_current_user)):
     """Check if AI features are available."""

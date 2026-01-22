@@ -1,8 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiX, FiSend, FiMessageCircle } from 'react-icons/fi'
 import ReactMarkdown from 'react-markdown'
-import api from '../api'
 
 interface ContractChatProps {
     isOpen: boolean
@@ -14,12 +13,19 @@ interface ContractChatProps {
 interface Message {
     role: 'user' | 'assistant'
     content: string
+    isStreaming?: boolean
 }
 
 const ContractChat: React.FC<ContractChatProps> = ({ isOpen, onClose, contractId, contractTitle }) => {
     const [messages, setMessages] = useState<Message[]>([])
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(false)
+    const messagesEndRef = useRef<HTMLDivElement>(null)
+
+    // Auto-scroll to bottom when messages change
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [messages])
 
     const handleSend = async () => {
         if (!input.trim() || loading) return
@@ -29,19 +35,102 @@ const ContractChat: React.FC<ContractChatProps> = ({ isOpen, onClose, contractId
         setMessages(prev => [...prev, { role: 'user', content: userMessage }])
         setLoading(true)
 
+        // Add empty assistant message that will be filled by stream
+        setMessages(prev => [...prev, { role: 'assistant', content: '', isStreaming: true }])
+
         try {
-            const response = await api.post(`/contracts/${contractId}/chat`, {
-                question: userMessage
+            // Use streaming endpoint with fetch
+            const response = await fetch(`/api/contracts/${contractId}/chat/stream`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ question: userMessage }),
+                credentials: 'include'
             })
 
-            setMessages(prev => [...prev, { role: 'assistant', content: response.data.answer }])
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+
+            const reader = response.body?.getReader()
+            const decoder = new TextDecoder()
+
+            if (!reader) {
+                throw new Error('No response body')
+            }
+
+            let fullContent = ''
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                const chunk = decoder.decode(value, { stream: true })
+                // Parse SSE format: data: <content>\n\n
+                const lines = chunk.split('\n')
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6) // Remove 'data: ' prefix
+
+                        if (data === '[DONE]') {
+                            // Stream finished
+                            continue
+                        }
+
+                        if (data.startsWith('[ERROR]')) {
+                            throw new Error(data.slice(8))
+                        }
+
+                        fullContent += data
+
+                        // Update the last message with new content
+                        setMessages(prev => {
+                            const newMessages = [...prev]
+                            const lastIdx = newMessages.length - 1
+                            if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                                newMessages[lastIdx] = {
+                                    ...newMessages[lastIdx],
+                                    content: fullContent
+                                }
+                            }
+                            return newMessages
+                        })
+                    }
+                }
+            }
+
+            // Mark streaming as complete
+            setMessages(prev => {
+                const newMessages = [...prev]
+                const lastIdx = newMessages.length - 1
+                if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                    newMessages[lastIdx] = {
+                        ...newMessages[lastIdx],
+                        isStreaming: false
+                    }
+                }
+                return newMessages
+            })
+
         } catch (error: any) {
             console.error('Chat failed', error)
-            const detail = error.response?.data?.detail || error.message || 'Unbekannter Fehler'
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: `❌ Fehler: ${detail}`
-            }])
+            const detail = error.message || 'Unbekannter Fehler'
+
+            // Update the last message with error
+            setMessages(prev => {
+                const newMessages = [...prev]
+                const lastIdx = newMessages.length - 1
+                if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                    newMessages[lastIdx] = {
+                        role: 'assistant',
+                        content: `❌ Fehler: ${detail}`,
+                        isStreaming: false
+                    }
+                }
+                return newMessages
+            })
         } finally {
             setLoading(false)
         }
@@ -138,13 +227,16 @@ const ContractChat: React.FC<ContractChatProps> = ({ isOpen, onClose, contractId
                                         ) : (
                                             <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-600">
                                                 <ReactMarkdown>{message.content}</ReactMarkdown>
+                                                {message.isStreaming && (
+                                                    <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-1" />
+                                                )}
                                             </div>
                                         )}
                                     </div>
                                 </div>
                             ))}
 
-                            {loading && (
+                            {loading && messages[messages.length - 1]?.content === '' && (
                                 <div className="flex justify-start">
                                     <div className="bg-gray-800 border border-gray-700 rounded-2xl px-4 py-3">
                                         <div className="flex gap-1">
@@ -155,6 +247,9 @@ const ContractChat: React.FC<ContractChatProps> = ({ isOpen, onClose, contractId
                                     </div>
                                 </div>
                             )}
+
+                            {/* Scroll anchor */}
+                            <div ref={messagesEndRef} />
                         </div>
 
                         {/* Input Area */}

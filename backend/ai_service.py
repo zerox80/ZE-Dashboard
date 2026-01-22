@@ -350,3 +350,81 @@ Wenn du etwas nicht im Dokument findest, sage das ehrlich."""
     if not isinstance(response_content, str):
         response_content = "" if response_content is None else str(response_content)
     return response_content
+
+
+async def chat_about_contract_stream(pdf_bytes: bytes, question: str):
+    """
+    Stream chat responses about a contract, token by token.
+    Uses OCR or image mode based on MISTRAL_USE_OCR env var.
+    
+    Args:
+        pdf_bytes: The PDF file content
+        question: User's question about the contract
+        
+    Yields:
+        str: Each token/chunk of the response as it arrives
+    """
+    client = get_client()
+    
+    if use_ocr_mode():
+        # OCR mode: Extract text first, then chat
+        logger.info("Using OCR mode for contract chat (streaming)")
+        document_text = await _process_pdf_with_ocr(pdf_bytes)
+        
+        if not document_text:
+            yield "Fehler: OCR konnte keinen Text aus dem PDF extrahieren."
+            return
+        
+        content = [{
+            "type": "text",
+            "text": f"""Hier ist der extrahierte Text eines Vertrags:
+
+{document_text}
+
+Frage zum Vertrag: {question}"""
+        }]
+    else:
+        # Image mode: Convert to images (max 8 pages)
+        logger.info("Using image mode for contract chat (streaming)")
+        loop = asyncio.get_running_loop()
+        images_base64 = await loop.run_in_executor(
+            _executor, 
+            _process_pdf_to_images, 
+            pdf_bytes, 
+            8  # max pages (Mistral API limit: max 8 images per request)
+        )
+        
+        content = []
+        for img_b64 in images_base64:
+            content.append({"type": "image_url", "image_url": img_b64})
+        
+        content.append({
+            "type": "text",
+            "text": f"Frage zum Vertrag: {question}"
+        })
+    
+    # Use streaming API
+    stream_response = await client.chat.stream_async(
+        model=MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": """Du bist ein hilfreicher Vertragsassistent. 
+Beantworte Fragen basierend auf dem bereitgestellten Vertragsdokument.
+Sei präzise und verweise auf spezifische Abschnitte wenn möglich.
+Wenn du etwas nicht im Dokument findest, sage das ehrlich."""
+            },
+            {
+                "role": "user",
+                "content": content
+            }
+        ]
+    )
+    
+    # Yield each chunk as it arrives
+    async for chunk in stream_response:
+        if chunk.data.choices and len(chunk.data.choices) > 0:
+            delta = chunk.data.choices[0].delta
+            if hasattr(delta, 'content') and delta.content:
+                yield delta.content
+

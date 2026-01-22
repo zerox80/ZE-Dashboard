@@ -123,7 +123,7 @@ async def analyze_contract_pdf(pdf_bytes: bytes) -> dict:
         _executor, 
         _process_pdf_to_images, 
         pdf_bytes, 
-        15  # max pages
+        8  # max pages (Mistral API limit: max 8 images per request)
     )
     
     # Build content with all page images
@@ -224,7 +224,7 @@ async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
         _executor, 
         _process_pdf_to_images, 
         pdf_bytes, 
-        15  # max pages
+        8  # max pages (Mistral API limit: max 8 images per request)
     )
     
     # Build content with all page images + question

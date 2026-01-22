@@ -7,17 +7,24 @@ Uses Mistral Large 3 for:
 """
 
 from mistralai import Mistral
+from mistralai.models import SDKError
 import base64
 import json
 import os
 import re
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from typing import TypeVar, Callable, Any
+from functools import wraps
 
 # Initialize client (lazy - only when API key is available)
 _client = None
 
 MODEL = "mistral-large-latest"  # Mistral Large 3
+
+# Retry configuration for rate limits
+MAX_RETRIES = 5
+BASE_DELAY = 2  # seconds
 
 import logging
 logger = logging.getLogger(__name__)
@@ -25,6 +32,41 @@ logging.basicConfig(level=logging.INFO)
 
 # Executor for CPU-bound tasks
 _executor = ThreadPoolExecutor(max_workers=3)
+
+
+async def _retry_on_rate_limit(func: Callable, *args, **kwargs) -> Any:
+    """
+    Wrapper that retries API calls on rate limit (429) errors.
+    Uses exponential backoff: 2s, 4s, 8s, 16s, 32s
+    """
+    last_exception = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            return await func(*args, **kwargs)
+        except SDKError as e:
+            # Check if it's a rate limit error (429)
+            if e.status_code == 429:
+                delay = BASE_DELAY * (2 ** attempt)
+                logger.warning(f"Rate limit hit, waiting {delay}s before retry {attempt + 1}/{MAX_RETRIES}")
+                await asyncio.sleep(delay)
+                last_exception = e
+            else:
+                # Not a rate limit error, re-raise immediately
+                raise
+        except Exception as e:
+            # Check if error message contains rate limit info
+            error_str = str(e).lower()
+            if "429" in error_str or "rate" in error_str or "limit" in error_str:
+                delay = BASE_DELAY * (2 ** attempt)
+                logger.warning(f"Rate limit hit, waiting {delay}s before retry {attempt + 1}/{MAX_RETRIES}")
+                await asyncio.sleep(delay)
+                last_exception = e
+            else:
+                raise
+    
+    # All retries exhausted
+    logger.error(f"Max retries ({MAX_RETRIES}) exhausted for rate limit")
+    raise last_exception or Exception("Max retries exhausted")
 
 
 def get_client() -> Mistral:
@@ -81,7 +123,7 @@ async def analyze_contract_pdf(pdf_bytes: bytes) -> dict:
         _executor, 
         _process_pdf_to_images, 
         pdf_bytes, 
-        30  # max pages (increased for paid Mistral API)
+        15  # max pages
     )
     
     # Build content with all page images
@@ -112,7 +154,8 @@ Regeln:
 - Falls ein Wert nicht ermittelbar ist, verwende null"""
     })
     
-    response = await client.chat.complete_async(
+    response = await _retry_on_rate_limit(
+        client.chat.complete_async,
         model=MODEL,
         messages=[
             {
@@ -181,7 +224,7 @@ async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
         _executor, 
         _process_pdf_to_images, 
         pdf_bytes, 
-        30  # max pages (increased for paid Mistral API)
+        15  # max pages
     )
     
     # Build content with all page images + question
@@ -194,7 +237,8 @@ async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
         "text": f"Frage zum Vertrag: {question}"
     })
     
-    response = await client.chat.complete_async(
+    response = await _retry_on_rate_limit(
+        client.chat.complete_async,
         model=MODEL,
         messages=[
             {

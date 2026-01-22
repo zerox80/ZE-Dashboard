@@ -81,7 +81,7 @@ async def analyze_contract_pdf(pdf_bytes: bytes) -> dict:
         _executor, 
         _process_pdf_to_images, 
         pdf_bytes, 
-        3  # max pages
+        30  # max pages (increased for paid Mistral API)
     )
     
     # Build content with all page images
@@ -175,13 +175,13 @@ async def chat_about_contract(pdf_bytes: bytes, question: str) -> str:
     """
     client = get_client()
     
-    # Offload blocking PDF processing to thread pool (use 5 pages for chat)
+    # Offload blocking PDF processing to thread pool
     loop = asyncio.get_running_loop()
     images_base64 = await loop.run_in_executor(
         _executor, 
         _process_pdf_to_images, 
         pdf_bytes, 
-        5  # max pages (keep low to avoid rate limits)
+        30  # max pages (increased for paid Mistral API)
     )
     
     # Build content with all page images + question

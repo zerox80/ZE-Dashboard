@@ -67,36 +67,44 @@ const ContractChat: React.FC<ContractChatProps> = ({ isOpen, onClose, contractId
                 if (done) break
 
                 const chunk = decoder.decode(value, { stream: true })
-                // Parse SSE format: data: <content>\n\n
+                // Parse SSE format: data: <json-encoded-content>\n\n
                 const lines = chunk.split('\n')
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
-                        const data = line.slice(6) // Remove 'data: ' prefix
+                        const jsonData = line.slice(6) // Remove 'data: ' prefix
 
-                        if (data === '[DONE]') {
-                            // Stream finished
-                            continue
-                        }
+                        try {
+                            // Parse JSON-encoded chunk
+                            const data = JSON.parse(jsonData)
 
-                        if (data.startsWith('[ERROR]')) {
-                            throw new Error(data.slice(8))
-                        }
-
-                        fullContent += data
-
-                        // Update the last message with new content
-                        setMessages(prev => {
-                            const newMessages = [...prev]
-                            const lastIdx = newMessages.length - 1
-                            if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
-                                newMessages[lastIdx] = {
-                                    ...newMessages[lastIdx],
-                                    content: fullContent
-                                }
+                            if (data === '[DONE]') {
+                                // Stream finished
+                                continue
                             }
-                            return newMessages
-                        })
+
+                            if (typeof data === 'string' && data.startsWith('[ERROR]')) {
+                                throw new Error(data.slice(8))
+                            }
+
+                            fullContent += data
+
+                            // Update the last message with new content
+                            setMessages(prev => {
+                                const newMessages = [...prev]
+                                const lastIdx = newMessages.length - 1
+                                if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                                    newMessages[lastIdx] = {
+                                        ...newMessages[lastIdx],
+                                        content: fullContent
+                                    }
+                                }
+                                return newMessages
+                            })
+                        } catch (parseError) {
+                            // Skip invalid JSON (incomplete chunks)
+                            console.debug('Skipping incomplete chunk:', jsonData)
+                        }
                     }
                 }
             }

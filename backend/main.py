@@ -1399,16 +1399,17 @@ async def chat_with_contract_stream(
     
     async def generate_stream():
         """Generate SSE stream from AI response."""
+        import json as _json
         try:
             from ai_service import chat_about_contract_stream
             async for chunk in chat_about_contract_stream(pdf_bytes, chat_req.question):
-                # SSE format: data: <content>\n\n
-                yield f"data: {chunk}\n\n"
+                # JSON-encode chunk to preserve newlines and special chars
+                yield f"data: {_json.dumps(chunk)}\n\n"
             # Send done signal
-            yield "data: [DONE]\n\n"
+            yield "data: \"[DONE]\"\n\n"
         except Exception as e:
             print(f"[AI ERROR] Stream failed: {e}")
-            yield f"data: [ERROR] {str(e)}\n\n"
+            yield f"data: {_json.dumps(f'[ERROR] {str(e)}')}\n\n"
     
     return StreamingResponse(
         generate_stream(),

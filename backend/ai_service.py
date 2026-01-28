@@ -183,7 +183,7 @@ Antworte NUR mit einem validen JSON-Objekt, ohne zusätzlichen Text oder Erklär
 }}
 
 Regeln:
-- value: Summe aller regelmäßigen (monatlichen) Kosten in Euro. Addiere ALLE Positionen (z.B. Miete + Versicherung + Servicegebühren).
+- value: Der GESAMTWERT des Vertrags. Berechne: (Summe aller monatlichen Kosten inkl. Versicherung/Steuer) * (Laufzeit in Monaten). Falls Laufzeit unbegrenzt/unbekannt: Nimm (Monatliche Kosten * 12). Gib nur die Zahl zurück.
 - start_date/end_date: Vertragslaufzeit im ISO-Format
 - notice_period: Kündigungsfrist in Tagen. Falls KEINE Frist explizit genannt ist, verwende null.
 - tags: 1-3 passende Kategorien (z.B. "Software", "Lizenz", "Miete", "Service")
@@ -220,7 +220,7 @@ Antworte NUR mit einem validen JSON-Objekt, ohne zusätzlichen Text oder Erklär
 }
 
 Regeln:
-- value: Summe aller regelmäßigen (monatlichen) Kosten in Euro. Addiere ALLE Positionen (z.B. Miete + Versicherung + Servicegebühren).
+- value: Der GESAMTWERT des Vertrags. Berechne: (Summe aller monatlichen Kosten inkl. Versicherung/Steuer) * (Laufzeit in Monaten). Falls Laufzeit unbegrenzt/unbekannt: Nimm (Monatliche Kosten * 12). Gib nur die Zahl zurück.
 - start_date/end_date: Vertragslaufzeit im ISO-Format
 - notice_period: Kündigungsfrist in Tagen. Falls KEINE Frist explizit genannt ist, verwende null.
 - tags: 1-3 passende Kategorien (z.B. "Software", "Lizenz", "Miete", "Service")

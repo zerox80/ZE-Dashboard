@@ -183,11 +183,11 @@ Antworte NUR mit einem validen JSON-Objekt, ohne zusätzlichen Text oder Erklär
 }}
 
 Regeln:
-- value: Gesamtwert des Vertrags in Euro (als Zahl, nicht als String)
+- value: Summe aller regelmäßigen (monatlichen) Kosten in Euro. Addiere ALLE Positionen (z.B. Miete + Versicherung + Servicegebühren).
 - start_date/end_date: Vertragslaufzeit im ISO-Format
-- notice_period: Kündigungsfrist in Tagen (Standard: 30)
+- notice_period: Kündigungsfrist in Tagen. Falls KEINE Frist explizit genannt ist, verwende null.
 - tags: 1-3 passende Kategorien (z.B. "Software", "Lizenz", "Miete", "Service")
-- Falls ein Wert nicht ermittelbar ist, verwende null"""
+- WICHTIG: Wenn ein Wert nicht explizit im Text steht, gib null zurück. Erfinde KEINE Daten. Insbesondere bei Kündigungsfristen und Enddaten: Wenn unklar, nimm null!"""
         }]
     else:
         # Image mode: Convert to images (max 8 pages)
@@ -220,11 +220,11 @@ Antworte NUR mit einem validen JSON-Objekt, ohne zusätzlichen Text oder Erklär
 }
 
 Regeln:
-- value: Gesamtwert des Vertrags in Euro (als Zahl, nicht als String)
+- value: Summe aller regelmäßigen (monatlichen) Kosten in Euro. Addiere ALLE Positionen (z.B. Miete + Versicherung + Servicegebühren).
 - start_date/end_date: Vertragslaufzeit im ISO-Format
-- notice_period: Kündigungsfrist in Tagen (Standard: 30)
+- notice_period: Kündigungsfrist in Tagen. Falls KEINE Frist explizit genannt ist, verwende null.
 - tags: 1-3 passende Kategorien (z.B. "Software", "Lizenz", "Miete", "Service")
-- Falls ein Wert nicht ermittelbar ist, verwende null"""
+- WICHTIG: Wenn ein Wert nicht explizit im Text steht, gib null zurück. Erfinde KEINE Daten. Insbesondere bei Kündigungsfristen und Enddaten: Wenn unklar, nimm null!"""
         })
     
     response = await _retry_on_rate_limit(
@@ -266,7 +266,7 @@ Regeln:
         "value": None,
         "start_date": None,
         "end_date": None,
-        "notice_period": 30,
+        "notice_period": None,
         "tags": []
     }
     

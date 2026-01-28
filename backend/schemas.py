@@ -158,7 +158,7 @@ class ContractAnalysisResult(BaseModel):
     value: Optional[float] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
-    notice_period: Optional[int] = 30
+    notice_period: Optional[int] = None
     tags: List[str] = []
 
 

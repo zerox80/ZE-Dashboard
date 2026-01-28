@@ -20,7 +20,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
     const [tags, setTags] = useState('')
     const [startDate, setStartDate] = useState('')
     const [endDate, setEndDate] = useState('')
-    const [noticePeriod, setNoticePeriod] = useState('30')
+    const [noticePeriod, setNoticePeriod] = useState('')
     const [uploading, setUploading] = useState(false)
     const [analyzing, setAnalyzing] = useState(false)
 
@@ -55,7 +55,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
             setDescription('')
             setValue('')
             setTags('')
-            setNoticePeriod('30')
+            setNoticePeriod('')
             setStartDate('')
             setEndDate('')
             setFile(null)
@@ -99,7 +99,11 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
             }
             if (data.start_date) setStartDate(data.start_date)
             if (data.end_date) setEndDate(data.end_date)
-            if (data.notice_period) setNoticePeriod(data.notice_period.toString())
+            if (data.notice_period !== null && data.notice_period !== undefined) {
+                setNoticePeriod(data.notice_period.toString())
+            } else {
+                setNoticePeriod('')
+            }
             if (data.tags && data.tags.length > 0) setTags(data.tags.join(', '))
 
         } catch (error: any) {
@@ -150,7 +154,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, initialData 
             setDescription('')
             setValue('')
             setTags('')
-            setNoticePeriod('30')
+            setNoticePeriod('')
             setStartDate('')
             setEndDate('')
         } catch (error: any) {

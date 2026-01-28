@@ -90,7 +90,24 @@ const Dashboard: React.FC = () => {
     const activeContracts = contracts?.length || 0;
     const totalValue = contracts?.reduce((acc, c) => acc + (c.value || 0), 0) || 0;
 
-    // Group by month for spending chart
+    // State for spending chart year filter
+    const currentYear = new Date().getFullYear();
+    const [selectedYear, setSelectedYear] = useState(currentYear);
+
+    // Calculate available years for filter
+    const availableYears = React.useMemo(() => {
+        if (!contracts) return [currentYear];
+        const years = new Set<number>();
+        years.add(currentYear);
+        contracts.forEach(c => {
+            if (c.start_date) {
+                years.add(new Date(c.start_date).getFullYear());
+            }
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    }, [contracts, currentYear]);
+
+    // Group by month for spending chart, filtered by selected year
     const spendingData = React.useMemo(() => {
         if (!contracts) return [];
 
@@ -102,6 +119,10 @@ const Dashboard: React.FC = () => {
         contracts.forEach(contract => {
             if (!contract.start_date || !contract.value) return;
             const date = new Date(contract.start_date);
+
+            // Filter by selected year
+            if (date.getFullYear() !== selectedYear) return;
+
             const monthIndex = date.getMonth();
             const monthName = allMonths[monthIndex];
             if (months[monthName] !== undefined) {
@@ -113,7 +134,7 @@ const Dashboard: React.FC = () => {
             name,
             amount: months[name]
         }));
-    }, [contracts]);
+    }, [contracts, selectedYear]);
 
     // Cost Distribution (Donut Chart)
     const costDistributionData = React.useMemo(() => {
@@ -202,7 +223,18 @@ const Dashboard: React.FC = () => {
                 <div className="md:col-span-2 bg-gray-800/50 border border-gray-700 rounded-xl p-4 backdrop-blur-sm flex flex-col md:flex-row gap-4 min-w-0">
                     {/* Bar Chart Section */}
                     <div className="flex-1 min-w-0">
-                        <p className="text-xs text-gray-400 mb-2">Ausgabentrend</p>
+                        <div className="flex justify-between items-center mb-2">
+                            <p className="text-xs text-gray-400">Ausgabentrend ({selectedYear})</p>
+                            <select
+                                value={selectedYear}
+                                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                                className="bg-gray-700 border border-gray-600 text-xs text-white rounded px-2 py-1 outline-none focus:border-blue-500"
+                            >
+                                {availableYears.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
                         <div className="h-48 md:h-64 w-full relative">
                             <div className="absolute inset-0">
                                 <ResponsiveContainer width="99%" height="100%">
@@ -255,12 +287,14 @@ const Dashboard: React.FC = () => {
                                             ))}
                                         </Pie>
                                         <RechartsTooltip
-                                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: '#fff' }}
-                                            itemStyle={{ color: '#fff' }}
+                                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: '#fff', maxWidth: '300px' }}
+                                            itemStyle={{ color: '#fff', whiteSpace: 'normal', wordWrap: 'break-word' }}
                                             labelStyle={{ display: 'none' }}
                                             formatter={(value: number, name: string) => {
                                                 const percent = totalValue > 0 ? (value / totalValue * 100) : 0;
-                                                return [`${percent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}%`, name];
+                                                // Truncate very long names for tooltip
+                                                const displayName = name.length > 50 ? name.substring(0, 47) + '...' : name;
+                                                return [`${percent.toLocaleString('de-DE', { maximumFractionDigits: 1 })}%`, displayName];
                                             }}
                                         />
                                     </PieChart>

@@ -20,8 +20,12 @@ import { FiChevronLeft, FiChevronRight, FiCalendar } from 'react-icons/fi'
 import api from '../api'
 import { Contract } from '../types'
 
+import UploadModal from '../components/UploadModal'
+
 const Calendar: React.FC = () => {
     const [currentDate, setCurrentDate] = useState(new Date())
+    const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
+    const [isModalOpen, setIsModalOpen] = useState(false)
 
     // Fetch all active contracts (we filter client-side for now)
     const { data: contracts, isLoading } = useQuery<Contract[]>(['contracts', 'all'], async () => {
@@ -161,7 +165,12 @@ const Calendar: React.FC = () => {
                                     {events.map((event, i) => (
                                         <div
                                             key={i}
-                                            className={`text-xs px-2 py-1 rounded truncate cursor-context-menu group relative ${event.color} text-white bg-opacity-80 hover:bg-opacity-100 transition-opacity`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedContract(event.contract);
+                                                setIsModalOpen(true);
+                                            }}
+                                            className={`text-xs px-2 py-1 rounded truncate cursor-pointer group relative ${event.color} text-white bg-opacity-80 hover:bg-opacity-100 transition-opacity`}
                                         >
                                             <span className="font-bold mr-1">{event.label}:</span>
                                             {event.contract.title}
@@ -187,6 +196,15 @@ const Calendar: React.FC = () => {
                     })}
                 </div>
             </div>
+
+            <UploadModal
+                isOpen={isModalOpen}
+                onClose={() => {
+                    setIsModalOpen(false)
+                    setSelectedContract(null)
+                }}
+                initialData={selectedContract}
+            />
 
             {/* Legend */}
             <div className="flex gap-6 mt-6 justify-center text-sm text-gray-400">

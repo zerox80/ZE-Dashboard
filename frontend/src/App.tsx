@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Contracts from './pages/Contracts'
 import AdminPanel from './pages/AdminPanel'
 import Lists from './pages/Lists'
+import Calendar from './pages/Calendar'
 import ProtectedContracts from './pages/ProtectedContracts'
 import Layout from './components/Layout'
 import { useState, useEffect, createContext, useContext } from 'react'
@@ -83,6 +84,9 @@ export function AppRoutes() {
                 } />
                 <Route path="/lists" element={
                     isAuthenticated ? <Layout><Lists /></Layout> : <Navigate to="/login" />
+                } />
+                <Route path="/calendar" element={
+                    isAuthenticated ? <Layout><Calendar /></Layout> : <Navigate to="/login" />
                 } />
                 <Route path="/protected" element={
                     isAuthenticated ? <Layout><ProtectedContracts /></Layout> : <Navigate to="/login" />

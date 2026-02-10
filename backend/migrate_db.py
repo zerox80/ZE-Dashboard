@@ -1,0 +1,37 @@
+import sqlite3
+import os
+
+# Path to your database file
+DB_PATH = "data/ze_dashboard.db"
+
+def migrate():
+    print(f"Connecting to database at {DB_PATH}...")
+    
+    if not os.path.exists(DB_PATH):
+        print(f"Error: Database file not found at {DB_PATH}")
+        return
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if column exists
+        cursor.execute("PRAGMA table_info(contract)")
+        columns = [info[1] for info in cursor.fetchall()]
+        
+        if "is_protected" in columns:
+            print("Column 'is_protected' already exists. No action needed.")
+        else:
+            print("Adding column 'is_protected'...")
+            # Add column with default value 0 (False)
+            cursor.execute("ALTER TABLE contract ADD COLUMN is_protected BOOLEAN DEFAULT 0")
+            conn.commit()
+            print("Migration successful: Added 'is_protected' column.")
+            
+        conn.close()
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+
+if __name__ == "__main__":
+    migrate()

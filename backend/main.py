@@ -1211,13 +1211,14 @@ def get_lists(
     session: Session = Depends(get_session)
 ):
     """Get all contract lists with contract counts."""
-    lists = session.exec(select(ContractList)).all()
+    statement = (
+        select(ContractList, func.count(ContractListLink.contract_id))
+        .outerjoin(ContractListLink, ContractList.id == ContractListLink.list_id)
+        .group_by(ContractList.id)
+    )
+    results = session.exec(statement).all()
     result = []
-    for lst in lists:
-        count = session.exec(
-            select(func.count(ContractListLink.contract_id))
-            .where(ContractListLink.list_id == lst.id)
-        ).one()
+    for lst, count in results:
         result.append({
             "id": lst.id,
             "name": lst.name,

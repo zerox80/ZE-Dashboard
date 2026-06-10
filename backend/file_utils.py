@@ -49,20 +49,22 @@ async def validate_file(file: UploadFile) -> str:
         # Fallback to content-type header
         mime_type = file.content_type or "application/octet-stream"
 
+    mime_to_exts = {
+        "application/pdf": [".pdf"],
+        "text/plain": [".txt"],
+        "image/png": [".png"],
+        "image/jpeg": [".jpg", ".jpeg"]
+    }
+
     if mime_type not in ALLOWED_MIMES:
-        # Fallback check: sometimes magic is too strict or fails
-        filename = file.filename or ""
-        ext = os.path.splitext(filename)[1].lower()
-        allowed_exts = [".pdf", ".txt", ".png", ".jpg", ".jpeg"]
-        
-        # If magic failed to identify allowed mime, but extension looks okay,
-        # we might want to be lenient OR strict. Security best practice: Strict.
-        # But per existing code logic, we want to allow if extension matches known types 
-        # as a fallback if magic was inconclusive (e.g. text files).
-        
-        is_valid_ext = ext in allowed_exts
-        if not is_valid_ext:
-             raise HTTPException(status_code=400, detail=f"Unsupported file type: {mime_type}")
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {mime_type}")
+
+    filename = file.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+    expected_exts = mime_to_exts.get(mime_type, [])
+    
+    if ext not in expected_exts:
+        raise HTTPException(status_code=400, detail=f"File extension '{ext}' does not match detected type '{mime_type}'")
 
     return mime_type
 
@@ -109,6 +111,13 @@ def resolve_file_path(file_path: str) -> str:
         # if it was joined with os.path.join.
         abs_path = os.path.abspath(file_path)
     
+    # Secure resolution to prevent path traversal
+    abs_path = os.path.realpath(abs_path)
+    base_dir = os.path.realpath(UPLOAD_DIR)
+    
+    if not abs_path.startswith(base_dir):
+        raise PermissionError("Access denied: Path is outside the uploads directory")
+        
     if not os.path.exists(abs_path):
         raise FileNotFoundError(f"File not found: {abs_path}")
         

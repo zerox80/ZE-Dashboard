@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react'
 import api, { toggleContractProtection } from '../api'
-import { FiShield, FiUnlock, FiTrash2, FiAlertCircle } from 'react-icons/fi'
+import { FiShield, FiUnlock, FiAlertCircle } from 'react-icons/fi'
 import { useNavigate } from 'react-router-dom'
 
 interface Contract {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiPlus, FiDownload, FiCalendar, FiClock, FiDollarSign, FiTrash2, FiAlertTriangle, FiCheckCircle, FiAlertOctagon, FiMessageCircle } from 'react-icons/fi'
+import { FiPlus, FiDownload, FiCalendar, FiClock, FiTrash2, FiAlertTriangle, FiCheckCircle, FiAlertOctagon, FiMessageCircle } from 'react-icons/fi'
 import api from '../api'
 import UploadModal from '../components/UploadModal'
 import ContractChat from '../components/ContractChat'
@@ -9,16 +9,15 @@ import { motion } from 'framer-motion'
 interface Contract {
     id: number
     title: string
-    description: string
+    description?: string | null
     start_date?: string
     end_date?: string
-    file_path: string
     uploaded_at: string
-    value?: number
-    annual_value?: number
+    value?: number | null
+    annual_value?: number | null
     tags: { name: string, color: string }[]
     version?: number
-    notice_period: number
+    notice_period?: number | null
     file_extension: string
 }
 

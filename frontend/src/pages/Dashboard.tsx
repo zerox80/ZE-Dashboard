@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams, useNavigate } from 'react-router-dom'
-import { FiPlus, FiDownload, FiCalendar, FiClock, FiDollarSign, FiTrash2, FiFolder, FiShield, FiLock } from 'react-icons/fi'
+import { useSearchParams } from 'react-router-dom'
+import { FiPlus, FiDownload, FiCalendar, FiClock, FiTrash2, FiFolder, FiShield, FiLock } from 'react-icons/fi'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import api, { toggleContractProtection } from '../api'
 import { parseGermanNumber, formatGermanNumber } from '../utils/formatUtils'
@@ -10,28 +10,48 @@ import CommandPalette from '../components/CommandPalette'
 import AuditModal from '../components/AuditModal'
 import SearchFilterBar, { FilterState } from '../components/SearchFilterBar'
 import AddToListModal from '../components/AddToListModal'
+import { useUser } from '../App'
 
 interface Contract {
     id: number
     title: string
-    description: string
-    start_date: string
-    end_date: string
-    file_path: string
+    description?: string | null
+    start_date?: string
+    end_date?: string
     uploaded_at: string
-    value: number
+    value?: number | null
+    annual_value?: number | null
     tags: { name: string, color: string }[]
     lists?: { id: number, name: string, color: string }[]
     version?: number
+    notice_period?: number | null
     file_extension: string
     is_protected: boolean
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
+const formatContractDate = (date?: string | null) => (
+    date ? new Date(date).toLocaleDateString('de-DE') : '-'
+)
+
+const isExpired = (endDate?: string | null) => (
+    Boolean(endDate && new Date(endDate) < new Date())
+)
+
+const getStatusLabel = (endDate?: string | null) => {
+    if (!endDate) return 'Unbefristet'
+    return isExpired(endDate) ? 'Abgelaufen' : 'Aktiv'
+}
+
+const getStatusClass = (endDate?: string | null) => {
+    if (!endDate) return 'bg-gray-700 text-gray-300'
+    return isExpired(endDate) ? 'bg-red-900/50 text-red-300' : 'bg-emerald-900/50 text-emerald-300'
+}
+
 const Dashboard: React.FC = () => {
     const [searchParams] = useSearchParams()
-    const navigate = useNavigate()
+    const { isAdmin } = useUser()
     const [isUploadOpen, setIsUploadOpen] = useState(false)
     const [isAuditOpen, setIsAuditOpen] = useState(false)
     const [auditContract, setAuditContract] = useState<{ id: number, title: string } | null>(null)
@@ -48,7 +68,7 @@ const Dashboard: React.FC = () => {
         setFilters(newFilters)
     }, [])
 
-    const { data: contracts, isLoading, refetch } = useQuery<Contract[]>(
+    const { data: contracts, isLoading } = useQuery<Contract[]>(
         ['contracts', filters, urlListId],
         async () => {
             const params: any = {}
@@ -341,8 +361,8 @@ const Dashboard: React.FC = () => {
                                 <FiCalendar size={24} />
                             </div>
                             <div className="flex gap-2">
-                                <span className={`text-xs font-medium px-2 py-1 rounded ${new Date(contract.end_date) < new Date() ? 'bg-red-900/50 text-red-300' : 'bg-emerald-900/50 text-emerald-300'}`}>
-                                    {new Date(contract.end_date) < new Date() ? 'Abgelaufen' : 'Aktiv'}
+                                <span className={`text-xs font-medium px-2 py-1 rounded ${getStatusClass(contract.end_date)}`}>
+                                    {getStatusLabel(contract.end_date)}
                                 </span>
                                 <button
                                     onClick={() => {
@@ -393,11 +413,11 @@ const Dashboard: React.FC = () => {
                         <div className="flex justify-between items-center text-xs text-gray-500 mb-6 border-t border-gray-700/50 pt-4">
                             <div className="flex items-center gap-1">
                                 <FiClock />
-                                <span>{new Date(contract.start_date).toLocaleDateString('de-DE')}</span>
+                                <span>{formatContractDate(contract.start_date)}</span>
                             </div>
                             <div className="flex items-center gap-1 font-bold text-gray-400">
                                 <span>€</span>
-                                <span>{formatGermanNumber(contract.value)}</span>
+                                <span>{contract.value != null ? formatGermanNumber(contract.value) : '-'}</span>
                             </div>
                         </div>
 
@@ -419,16 +439,18 @@ const Dashboard: React.FC = () => {
                             >
                                 {contract.is_protected ? <FiShield /> : <FiLock />}
                             </button>
-                            <button
-                                onClick={() => {
-                                    setAddToListContract({ id: contract.id, title: contract.title });
-                                    setIsAddToListOpen(true);
-                                }}
-                                className="px-3 bg-indigo-900/30 hover:bg-indigo-900/50 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
-                                title="Zu Liste hinzufügen"
-                            >
-                                <FiFolder />
-                            </button>
+                            {isAdmin && (
+                                <button
+                                    onClick={() => {
+                                        setAddToListContract({ id: contract.id, title: contract.title });
+                                        setIsAddToListOpen(true);
+                                    }}
+                                    className="px-3 bg-indigo-900/30 hover:bg-indigo-900/50 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
+                                    title="Zu Liste hinzufügen"
+                                >
+                                    <FiFolder />
+                                </button>
+                            )}
                         </div>
                     </div>
                 ))}
